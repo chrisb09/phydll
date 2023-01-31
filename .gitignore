@@ -1,0 +1,9 @@
+build
+test/r1
+src/fortran/*.mod
+src/python/phydll/__pycache__
+src/python/phydll/nn/__pycache__
+src/python/phydll/nn/.vscode
+src/python/phydll/.vscode
+src/python/phydll.egg-info
+.vscode

@@ -1,0 +1,35 @@
+# DL mesh parameters
+DLmesh :
+  xmin : 4.0e-3                       # (mandatory, if mesh_type=voxgrid)
+  ymin : 3.0e-3                       # (mandatory, if mesh_type=voxgrid)
+  zmin : 0.0                          # (mandatory, if mesh_type=voxgrid)
+  dx : 8.0e-5                         # (mandatory, if mesh_type=voxgrid)
+  nx : 176                            # (mandatory, if mesh_type=voxgrid)
+  ny : 46                             # (mandatory, if mesh_type=voxgrid)
+  nz : 65                             # (mandatory, if mesh_type=voxgrid)
+
+  # Overlap options (optional)
+  overlap :
+    overlap : True                    # (optional, default=False) Overlap activation
+    x_n_elmts : 12                    # (optional, default=0) X-axis: elements number
+    y_n_elmts : 10                    # (optional, default=0) Y-axis: elements number
+    z_n_elmts : 8                     # (optional, default=0) Z-axis: elements number
+
+
+# Coupling interface parameters
+Coupling:
+  coupling_frequency : 1              # (optional, default=1) Coupling frequency
+  save_fields_frequency : 1           # (optional, default=0) Frequency to save exchanged fields in ./PhyDLL_FIELDS/cwipi
+
+  # CWIPI parameters (optional)
+  cwipi:
+    geom_tol : 0.025                  # (optional, default=0.05) Geometric tolerence for CWIPI Localization
+    dl_val_not_located : [0.0]        # (mandatory*, shape=phy_nfields) Default values of not located points (*if exist)
+    phy_val_not_located : [0.0]       # (mandatory*, shape=dl_nfields) Default values of not located points (*if exist)
+
+
+# Output parameters (optional)
+Output:
+  logfile : "phydll.log"              # (optional, default="phydll.log") Log file
+  logfile_jid : True                  # (optional, default=True) Append slurm job id to logfile name
+  debug_level : 4                     # (optional, default=2) Debug level (verbosity) [0, 1, 2, 3, 4]

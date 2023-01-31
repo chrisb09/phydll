@@ -1,0 +1,8 @@
+Model :
+  modelfile : "./NN_MODELS/gin_v1_500.pth"
+
+GPU :
+  use_gpu : False
+  custom_ids : True
+  ids_per_node : [3,2,1,0]
+  

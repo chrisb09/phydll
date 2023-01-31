@@ -1,0 +1,10 @@
+# Coupling interface parameters
+Coupling:
+  coupling_frequency : 1              # (optional, default=1) Coupling frequency
+  save_fields_frequency : 1           # (optional, default=0) Frequency to save exchanged fields in ./PhyDLL_FIELDS
+
+# Output parameters
+Output:
+  logfile : "phydll.log"              # (optional, default="phydll.log") Log file
+  logfile_jid : True                  # (optional, default=True) Append slurm job id to logfile name
+  debug_level : 4                     # (optional, default=2) Debug level (verbosity) [0, 1, 2, 3, 4]

@@ -1,0 +1,15 @@
+# Deep learning model parameters
+Model :
+  modelfile : "./NN_MODELS/model_R2_tf2.h5"     # (mandatory) Model file path
+  fill_obs : False                              # (optional, default=False) Fill obstacles
+
+  # CNN parameters
+  CNN_params :
+    shape_modulo : 4                            # (mandatory) Shape modulo
+
+
+# GPU parameters (optional)
+GPU :
+  use_gpu : True                                # (optional, default=True) Use gpu (default: True)
+  custom_ids : False                            # (optional, default=False) Activate custom GPU ids
+  ids_per_node : [2,1,0,1]                      # (optional, default=[0,1,2,3]) Custom ids per node
