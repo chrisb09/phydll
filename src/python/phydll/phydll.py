@@ -61,6 +61,7 @@ class PhyDLL:
 
         self.set_coupling_interface()
         self.set_mesh_object()
+        self.pre_processing()
 
 
     def set_coupling_interface(self):
@@ -70,9 +71,8 @@ class PhyDLL:
         tic = self.mpienv.MPI.Wtime()
         self.output.log(f"Coupling scheme = {self.coupling_scheme}")
 
-        buff = np.zeros(64, dtype="c")
+        buff = np.zeros(64, dtype="c"); buff[:] = " "
         buff[:len(self.coupling_scheme)] = self.coupling_scheme
-        buff[len(self.coupling_scheme):] = " "
         self.mpienv.glcomm.Bcast(buf=[buff, self.mpienv.MPI.CHARACTER], root=self.mpienv.hrank)
 
         buff = np.array([self.phy_nfields], dtype="i")
@@ -85,9 +85,16 @@ class PhyDLL:
         buff = np.array([self.cpl_freq], dtype="i")
         self.mpienv.glcomm.Bcast(buf=[buff, self.mpienv.MPI.INTEGER], root=self.mpienv.hrank)
 
-        buff = np.zeros(16, dtype="c")
+        buff = np.zeros(16, dtype="c"); buff[:] = " "
         buff[:len(self.mesh_type)] = self.mesh_type
-        buff[len(self.mesh_type):] = " "
+        self.mpienv.glcomm.Bcast(buf=[buff, self.mpienv.MPI.CHARACTER], root=self.mpienv.hrank)
+
+        self.save_fields_frequency = self.input.coupling_params["save_fields_frequency"]
+        buff = np.array([self.save_fields_frequency], dtype="i")
+        self.mpienv.glcomm.Bcast(buf=[buff, self.mpienv.MPI.INTEGER], root=self.mpienv.hrank)
+
+        buff = np.zeros(256, dtype="c"); buff[:] = " "
+        buff[:len(self.output.fields_dir)] = self.output.fields_dir
         self.mpienv.glcomm.Bcast(buf=[buff, self.mpienv.MPI.CHARACTER], root=self.mpienv.hrank)
 
         toc = self.mpienv.MPI.Wtime()
@@ -123,9 +130,7 @@ class PhyDLL:
         self.output.log_hl1(f"{'Number of Phy fields' :<21} = {self.phy_nfields}", dblv)
         self.output.log_hl1(f"{'Number of DL fields' :<21} = {self.dl_nfields}", dblv)
         if not self.mesh_type == "NC":
-            save_fields_frequency = self.input.coupling_params["save_fields_frequency"]
-            self.output.log_hl1(f"{'Save fields frequency' :<21} = {save_fields_frequency}", dblv)
-
+            self.output.log_hl1(f"{'Save fields frequency' :<21} = {self.save_fields_frequency}", dblv)
 
         if self.coupling_scheme in ("IS", "InterpolationScheme"):
             from phydll.cwp import CWIPI
@@ -153,8 +158,6 @@ class PhyDLL:
             self.output.log_hl0(f"Set DL mesh for {self.coupling_scheme} coupling\n", dblv=0)
             self.cplinterf.set_python_mesh(self.mesh)
             self.output.log_hl0(timer=self.output.timers.set_mesh, dblv=0)
-
-        self.mpienv.glcomm.Barrier()
 
 
     def set_predict_func(self, predict):
@@ -210,7 +213,7 @@ class PhyDLL:
         """
         self.cpl_ite += 1
 
-        if self.phy_ite == 0:
+        if self.phy_ite in (0, 1):
             self.output.log_hl0("Temporal \n", dblv=0)
             self.output.log_hl1(f"Coupling iteration = {self.cpl_ite} ...", dblv=1)
             self.output.timers.temporal = self.mpienv.MPI.Wtime()

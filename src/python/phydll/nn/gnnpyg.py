@@ -143,7 +143,7 @@ class GraphNeuralNetPyg:
         Create the graph edeges from connectivity table
         """
         try:
-            edges_list_file = f"{self.mesh.dmpi_saves_rep}/edges_list-{self.mesh.global_nvertex}-{self.mesh.connec.shape[0]}-{self.mpienv.comm_size}-{self.mpienv.comm_rank}.pkl"
+            edges_list_file = f"{self.mesh.phydll_mesh_rep}/edges_list-{self.mesh.global_nvertex}-{self.mesh.connec.shape[0]}-{self.mpienv.comm_size}-{self.mpienv.comm_rank}.pkl"
         except AttributeError:
             edges_list_file = f"./voxgrid_edges_list_{self.mesh.connec.shape[0]}-{self.mpienv.comm_size}-{self.mpienv.comm_rank}"
         edges_list_file_exists = os.path.exists(edges_list_file)

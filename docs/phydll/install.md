@@ -17,7 +17,7 @@ cd phydll
 ```
 
 ## Fortran compilation
-##### 1. Compile
+#### 1. Compile
 <a name="phydll_compilation"></a>
 ```bash
 mkdir ../PHYDLL
@@ -26,21 +26,26 @@ make FC=$FC BUILD=../PHYDLL
 ```
 where `$FC` is the MPI-Fortran compiler, it could be `mpifort` (*GNU*) or `mpiifort` (*Intel*). `BUILD=` is the installation directory.
 
-##### 2. Compile with CWIPI support
+#### 2. Compile with CWIPI support
 To install PhyDLL with CWIPI support, It should be installed before (*cf.* <a href="#cwipi_compilation">CWIPI installation</a>), and the variable `CWIPI_DIR` should be set as the installation directory of CWIPI.
-```
+```bash
 export CWIPI_DIR=<CWIPI_INSTALLATION_DIRECTORY>
 ```
 Once this environment variable is set, the compilation process (<a href="#phydll_compilation">1. Compile</a>) detects automatically CWIPI support.
 
+
+#### 3. Compile with HDF5 support
+In order to save exchanged fields during the coupling (for `DirectScheme` coupling), PhyDLL should be compiled with HDF5 support. To do so, an environment variable exports the installation directory of HDF5. Then PhyDLL’s compilation detects automatically the support.
+```bash
+export HDF5_DIR=<HDF5_INSTALLATION_DIRECTORY>
+```
+
+#### 4. Create the executable of Fortran solver
 To create the executable of the Fortran solver, it is relevant to export PhyDLL directory as an environment variable
 ```bash
 export PHYDLL_DIR=$(realpath ../PhyDLL)
 ```
-
-#### 3. Create the executable of Fortran solver
-To create the executable of the Fortran solver, the following flags should be added to the compilation and linking steps.
-
+The following flags should be added to the compilation and linking steps.
 + Compilation flags:
 ```bash
 -DPHYDLL -I${PHYDLL_DIR}/include
@@ -120,17 +125,21 @@ make install
 export CWIPI_DIR=$PWD
 ```
 
-## Example of installation of PhyDLL with CWIPI support:
-The example below shows how to install PhyDLL with *Intel MPI* and *Python 3.9*. CWIPI is already installed and located in `CWIPI_DIR`.
+## Example of installation of PhyDLL with CWIPI and HDF5 supports:
+The example below shows how to install PhyDLL with *GNU/OpenMPI* and *Python 3.9*. CWIPI and HDF5 are already installed and located in `CWIPI_DIR` and `HDF5_DIR` respectively.
 
 ```bash
 $ pwd
 /home/serhani/
+
 $ git clone https://gitlab.com/cerfacs/phydll
 $ cd phydll
 $ mkdir ../PHYDLL
+
 $ export CWIPI_DIR=/home/serhani/CWIPI
-$ make FC=mpiifort BUILD=../PHYDLL
+$ export HDF5_DIR=/home/serhani/HDF5
+
+$ make FC=mpifort BUILD=../PHYDLL
 -------------------------------------------------
 Welcome to PhyDLL <Physics Deep Learning coupLer>
 phydll@cerfacs.fr                      CERFACS(C)
@@ -144,11 +153,14 @@ phydll@cerfacs.fr                      CERFACS(C)
           CWIPI support: True
           CWIPI directory: /home/serhani/CWIPI
 
-          Fortran compiler: mpiifort (/usr/bin/mpiifort)
-          Fortran flags: -O2 -g -fpp -warn all -traceback -DCWIPI -I/home/serhani/CWIPI/include -L/home/serhani/CWIPI/lib -Wl,-rpath=/home/serhani/CWIPI/lib -lcwp -lcwpf
+          HDF5 support: True
+          HDF5 directory: /home/serhani/HDF5
+
+          Fortran compiler: mpifort (/usr/bin/mpifort)
+          Fortran flags: -O2 -g -cpp -Wall -Wextra -fbacktrace -ffree-line-length-none -DCWIPI -I/home/serhani/CWIPI/include -L/home/serhani/CWIPI/lib -Wl,-rpath=/home/serhani/CWIPI/lib -lcwp -lcwpf -DHDF5 -I/home/serhani/HDF5/include -L/home/serhani/HDF5/lib -lhdf5_fortran -lhdf5 -lhdf5_hl -lhdf5hl_fortran
 
           Compiling ...
-mpiifort -O2 -g -fpp -warn all -traceback -DCWIPI -I/home/serhani/CWIPI/include -L/home/serhani/CWIPI/lib -Wl,-rpath=/home/serhani/CWIPI/lib -lcwp -lcwpf -fpic -shared ./src/fortran/mod_params.f90 ./src/fortran/mod_env.f90 ./src/fortran/mod_cpl.f90 ./src/fortran/mod_mesh.f90 ./src/fortran/mod_io.f90 ./src/fortran/mod_phydll.f90 ./src/fortran/phydll.f90 -o ./build/lib/libphydll.so -I./build/include
+mpifort -O2 -g -cpp -Wall -Wextra -fbacktrace -ffree-line-length-none -DCWIPI -I/home/serhani/CWIPI/include -L/home/serhani/CWIPI/lib -Wl,-rpath=/home/serhani/CWIPI/lib -lcwp -lcwpf -DHDF5 -I/home/serhani/HDF5/include -L/home/serhani/HDF5/lib -lhdf5_fortran -lhdf5 -lhdf5_hl -lhdf5hl_fortran -fpic -shared ./src/fortran/mod_params.f90 ./src/fortran/mod_env.f90 ./src/fortran/mod_cpl.f90 ./src/fortran/mod_mesh.f90 ./src/fortran/mod_io.f90 ./src/fortran/mod_phydll.f90 ./src/fortran/phydll.f90 -o ../PHYDLL/lib/libphydll.so -I../PHYDLL/include
 
           PhyDLL Library path: /home/serhani/PhyDLL/lib
           PhyDLL Include path: /home/serhani/PhyDLL/include

@@ -33,6 +33,12 @@ ifdef CWIPI_DIR
 	FLAGS += -I$(CWIPI_DIR)/include -L$(CWIPI_DIR)/lib -Wl,-rpath=$(CWIPI_DIR)/lib -lcwp -lcwpf
 endif
 
+# HDF5 SUPPORT
+ifdef HDF5_DIR
+	FLAGS += -DHDF5
+	FLAGS += -I${HDF5_DIR}/include -L${HDF5_DIR}/lib -lhdf5_fortran -lhdf5 -lhdf5_hl -lhdf5hl_fortran
+endif
+
 all: echo0 clean compile pyinstall echo1
 
 echo0:
@@ -44,10 +50,16 @@ echo0:
 	@echo "          Build directory: $(realpath $(BUILD))"
 	@echo -e "          Sources directory: $(realpath $(SRC))\n"
 	@if [[ -z "${CWIPI_DIR}" ]]; then\
-		echo -e "          CWIPI support: False\n";\
+		echo -e "          CWIPI support: False\n";\
 	else\
-		echo "          CWIPI support: True";\
+		echo "          CWIPI support: True";\
 		echo -e "          CWIPI directory: ${CWIPI_DIR}\n";\
+	fi
+	@if [[ -z "${HDF5_DIR}" ]]; then\
+		echo -e "          HDF5 support: False\n";\
+	else\
+		echo "          HDF5 support: True";\
+		echo -e "          HDF5 directory: ${HDF5_DIR}\n";\
 	fi
 	@echo "          Fortran compiler: $(FC) ($(shell which $(FC)))"
 	@echo -e "          Fortran flags: $(FLAGS)\n"
@@ -70,5 +82,7 @@ echo1:
 	@echo -e "\n(PhyDLL) -----> DONE \n"
 
 clean:
-	@rm -rf $(BUILD)/*
-	@rm -f $(SOURCES)/*.mod
+	@rm -rf $(BUILD)
+	@rm -f $(SRC)/*.mod
+	@rm -f ./*.o
+	@mkdir -p $(BUILD)

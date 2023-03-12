@@ -1,7 +1,9 @@
+#!/usr/bin/env python
 """ Copyright (c) CERFACS (all rights reserved)
 @file       jobscript_generator.py
 @details    SLURM's job script generator
 @autor      A. Serhani
+@email      phydll@cerfacs.fr
 """
 import argparse
 import os
@@ -73,6 +75,7 @@ def main():
     enable_phydll(file)
     placement_file(file, runmode, phyexec, dlexec)
     run_command(file, runmode, phyexec, dlexec)
+    chmodx(filename)
 
 def sbatch_options(file, jobname, partition, nodes, time, output, excl):
     """
@@ -108,7 +111,7 @@ def environment_variables(file, phy_tasks_per_node, dl_tasks_per_node):
     Set numbers of tasks
     """
     with open(file, "a") as f:
-        f.write(f"# NUMBER OF TASKS\n")
+        f.write(f"# NUMBER OF TASKS #######\n")
         f.write(f"export PHY_TASKS_PER_NODE={phy_tasks_per_node}\n")
         f.write(f"export DL_TASKS_PER_NODE={dl_tasks_per_node}\n")
         f.write(f"export TASKS_PER_NODE=$(($PHY_TASKS_PER_NODE + $DL_TASKS_PER_NODE))\n")
@@ -157,7 +160,7 @@ def placement_file(file, runmode, phyexec, dlexec):
         f.write(f"# PLACEMENT FILE ########\n")
         f.write(f"python {os.path.dirname(__file__)}/placement4mpmd.py --Run {runmode} --NpPHY $NP_PHY --NpDL $NP_DL")
 
-        if runmode == "srun":   f.write(f" --PHYEXE '{phyexec}' --DLEXE '{dlexec}'\nn")
+        if runmode == "srun":   f.write(f" --PHYEXE '{phyexec}' --DLEXE '{dlexec}'\n")
         else: f.write("\n")
         f.write(f"{25*'#'}\n\n")
 
@@ -179,6 +182,12 @@ def run_command(file, runmode, phyexec, dlexec):
 
             f.write(f"mpirun {placement} -np $NP_PHY {phyexec} : -np $NP_DL {dlexec}\n")
         f.write(f"{25*'#'}\n\n")
+
+def chmodx(filename):
+    """
+    Make job file executable
+    """
+    os.system(f"chmod +x {filename}")
 
 if __name__ == "__main__":
     main()

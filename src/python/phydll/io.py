@@ -41,8 +41,6 @@ class Input:
 
         self.meshfile = ""
 
-        self.xdmf_collec = ""
-
         self.read_config()
 
 
@@ -103,7 +101,10 @@ class Output:
         self.loglines = []
         self.logfile = self.input.output_params["logfile"]
         if self.input.output_params["logfile_jid"]:
-            self.logfile += "." + os.environ.get('SLURM_JOB_ID')
+            if self.input.output_params["logfile"] == "./phydll.log":
+                self.logfile = f"./phydll-{os.environ.get('SLURM_JOB_ID')}.log"
+            else:
+                self.logfile += "." + os.environ.get('SLURM_JOB_ID')
 
         self.dblv = self.input.output_params["debug_level"]
         self.hl0 = "(PhyDLL) ----> "
@@ -118,6 +119,16 @@ class Output:
         if self.mpienv.is_commhrank:
             with open(self.logfile, "w", encoding="utf-8") as file:
                 file.write(datetime.now().strftime("%d/%m/%Y - %H:%M:%S") + f"\t JOBID={jobidstr}")
+
+        self.xdmf_collec = f"""<?xml version="1.0" ?>
+<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" []>
+<Xdmf xmlns:xi="http://www.w3.org/2001/XInclude" Version="2.0">
+    <Domain>
+        <Grid Name="phydll_fields" GridType="Collection" CollectionType="Temporal">
+        </Grid>
+    </Domain>
+</Xdmf>"""
+        self.xdmf_collec_phy = f"{self.xdmf_collec}"
 
         self.create_logfile()
 
@@ -179,8 +190,8 @@ class Output:
 |   |_|    |  |\/ |____/ |____||____|   |
 |              /                        |
 |             /                         |
-|   << Physic Deep Learning coupLer >>  |
-|   phydll@cerfacs.fr       CERFACS(C)  |
+|  << Physics Deep Learning coupLer >>  |
+|  phydll@cerfacs.fr       CERFACS(C)   |
 |_______________________________________|
           """)
         self.log(f"Distant MPI communicator (Phy) = {self.mpienv.dsize}")
@@ -309,10 +320,17 @@ class Output:
         self.log_hl2(" ", dblv=dblv)
 
 
+
+    # def print_fields_dir(self):
+    #     if self.input.coupling_params["save_fields_frequency"] > 0:
+    #         self.log_hl1(f"Fields saved in {self.output.fields_dir}, Visualization: {self.output.fields_dir}/phydll_dl_fields.xmf", dblv=3)
+
+
     def save_fields(self, phy_fields, dl_fields, mesh, phy_nfields, dl_nfields, cpl_ite):
         """"
         Save local mesh and exchanged fields
         """
+        self.log_hl2("Save fields ...", dblv=3)
         self.save_hdf5_files(phy_fields, dl_fields, mesh, phy_nfields, dl_nfields, cpl_ite)
         self.write_xdmf_files(mesh, phy_nfields, dl_nfields, cpl_ite)
         self.write_xdmf_collec_file(cpl_ite)
@@ -322,12 +340,12 @@ class Output:
         """
         Save hdf5 files
         """
-        meshfile = f"{self.fields_dir}/FILES/fields_{cpl_ite}_{self.mpienv.comm_rank}-{self.mpienv.comm_size-1}.h5"
+        meshfile = f"{self.fields_dir}/FILES/fields_dl_{cpl_ite}_{self.mpienv.comm_rank}-{self.mpienv.comm_size-1}.h5"
         with h5py.File(meshfile, "w") as file:
             file["connec"] = mesh.connec
-            file["x"] = mesh.coords[::3]
-            file["y"] = mesh.coords[1::3]
-            file["z"] = mesh.coords[2::3]
+            file["x"] = mesh.coords[::mesh.dim]
+            file["y"] = mesh.coords[1::mesh.dim]
+            if mesh.dim == 3: file["z"] = mesh.coords[2::mesh.dim]
             file["mpi_rank"] = int(self.mpienv.comm_rank) * np.ones(mesh.nvertex, dtype="int")
 
             for i in range(phy_nfields):
@@ -342,33 +360,42 @@ class Output:
         """
         Write xdmf files
         """
+        geometry_type = "X_Y"
+        if mesh.dim == 3: geometry_type += "_Z"
+
+        worder = '>'
+        if mesh.topo_type == "Wedge": worder = ' Order="0 5 3 1 4 2">'
+
         xdmf = f"""<?xml version="1.0" ?>
 <!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" []>
 <Xdmf Version="2.0" xmlns:xi="http://www.w3.org/2001/XInclude">
     <Domain>
-        <Grid Collection="Tetrahedron_Mesh" Name="solution-Tetrahedron">
+        <Grid Collection="PhyDLL" Name="exch_fields_dl">
             <Time Value="{cpl_ite}" />
-            <Topology Type="Tetrahedron" NumberOfElements="{mesh.nelmt}">
+            <Topology Type="{mesh.topo_type}" NumberOfElements="{mesh.nelmt}"{worder}
                 <DataItem ItemType="Function" Dimensions="{mesh.connec.shape[0]}" Function="$0 - 1">
                     <DataItem Format="HDF" DataType="Int" Dimensions="{mesh.connec.shape[0]}">
-                        ./FILES/fields_{cpl_ite}_{self.mpienv.comm_rank}-{self.mpienv.comm_size-1}.h5:/connec
+                        ./FILES/fields_dl_{cpl_ite}_{self.mpienv.comm_rank}-{self.mpienv.comm_size-1}.h5:/connec
                     </DataItem>
                 </DataItem>
             </Topology>
-            <Geometry Type="X_Y_Z">
+            <Geometry Type="{geometry_type}">
                 <DataItem Format="HDF" ItemType="Uniform" Precision="8" NumberType="Float" Dimensions="{mesh.nvertex}">
-                    ./FILES/fields_{cpl_ite}_{self.mpienv.comm_rank}-{self.mpienv.comm_size-1}.h5:/x
+                    ./FILES/fields_dl_{cpl_ite}_{self.mpienv.comm_rank}-{self.mpienv.comm_size-1}.h5:/x
                 </DataItem>
                 <DataItem Format="HDF" ItemType="Uniform" Precision="8" NumberType="Float" Dimensions="{mesh.nvertex}">
-                    ./FILES/fields_{cpl_ite}_{self.mpienv.comm_rank}-{self.mpienv.comm_size-1}.h5:/y
-                </DataItem>
+                    ./FILES/fields_dl_{cpl_ite}_{self.mpienv.comm_rank}-{self.mpienv.comm_size-1}.h5:/y
+                </DataItem>"""
+        if mesh.dim == 3:
+            xdmf += f"""
                 <DataItem Format="HDF" ItemType="Uniform" Precision="8" NumberType="Float" Dimensions="{mesh.nvertex}">
-                    ./FILES/fields_{cpl_ite}_{self.mpienv.comm_rank}-{self.mpienv.comm_size-1}.h5:/z
-                </DataItem>
+                    ./FILES/fields_dl_{cpl_ite}_{self.mpienv.comm_rank}-{self.mpienv.comm_size-1}.h5:/z
+                </DataItem>"""
+        xdmf += f"""
             </Geometry>
             <Attribute Name="mpi_rank" Center="Node" AttributeType="Scalar">
                 <DataItem Format="HDF" DataType="Int" Dimensions="{mesh.nvertex}">
-                    ./FILES/fields_{cpl_ite}_{self.mpienv.comm_rank}-{self.mpienv.comm_size-1}.h5:/mpi_rank
+                    ./FILES/fields_dl_{cpl_ite}_{self.mpienv.comm_rank}-{self.mpienv.comm_size-1}.h5:/mpi_rank
                 </DataItem>
             </Attribute>"""
 
@@ -376,7 +403,7 @@ class Output:
             xdmf += f"""
             <Attribute Name="phy_fields_{i}" Center="Node" AttributeType="Scalar">
                 <DataItem Format="HDF" ItemType="Uniform" Precision="8" NumberType="Float" Dimensions="{mesh.nvertex}">
-                    ./FILES/fields_{cpl_ite}_{self.mpienv.comm_rank}-{self.mpienv.comm_size-1}.h5:/phy_fields_{i}
+                    ./FILES/fields_dl_{cpl_ite}_{self.mpienv.comm_rank}-{self.mpienv.comm_size-1}.h5:/phy_fields_{i}
                 </DataItem>
             </Attribute>"""
 
@@ -384,39 +411,30 @@ class Output:
             xdmf += f"""
             <Attribute Name="dl_fields_{i}" Center="Node" AttributeType="Scalar">
                 <DataItem Format="HDF" ItemType="Uniform" Precision="8" NumberType="Float" Dimensions="{mesh.nvertex}">
-                    ./FILES/fields_{cpl_ite}_{self.mpienv.comm_rank}-{self.mpienv.comm_size-1}.h5:/dl_fields_{i}
+                    ./FILES/fields_dl_{cpl_ite}_{self.mpienv.comm_rank}-{self.mpienv.comm_size-1}.h5:/dl_fields_{i}
                 </DataItem>
             </Attribute>"""
 
         xdmf += """</Grid>
     </Domain>
 </Xdmf>"""
-        xdmf_file = f"{self.fields_dir}/FILES/fields_{cpl_ite}_{self.mpienv.comm_rank}-{self.mpienv.comm_size-1}.xmf"
+        xdmf_file = f"{self.fields_dir}/FILES/fields_dl_{cpl_ite}_{self.mpienv.comm_rank}-{self.mpienv.comm_size-1}.xmf"
         with open(xdmf_file, "w") as file:
             file.write(xdmf)
 
 
     def write_xdmf_collec_file(self, cpl_ite):
         """
-        Write xdmf collection file
+        Write xdmf collection file (DL)
         """
         if self.mpienv.is_commhrank:
-            fields_file = f"{self.fields_dir}/phydll_fields.xmf"
-            if cpl_ite == 1:
-                self.xdmf_collec = f"""<?xml version="1.0" ?>
-<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" []>
-<Xdmf xmlns:xi="http://www.w3.org/2001/XInclude" Version="2.0">
-    <Domain>
-        <Grid Name="phydll_fields" GridType="Collection" CollectionType="Temporal">
-        </Grid>
-    </Domain>
-</Xdmf>"""
-
+            # DL XDMF COLLEC
+            fields_file = f"{self.fields_dir}/phydll_dl_fields.xmf"
             self.xdmf_collec = self.xdmf_collec[:-38] + f"""
-            <Grid Name="./phydll_fields_{cpl_ite}" GridType="Collection" CollectionType="Spatial">"""
+            <Grid Name="./phydll_dl_fields_{cpl_ite}" GridType="Collection" CollectionType="Spatial">"""
             for i in range(self.mpienv.comm_size):
                 self.xdmf_collec += f"""
-                <xi:include href="./FILES/fields_{cpl_ite}_{i}-{self.mpienv.comm_size-1}.xmf" xpointer="xpointer(//Xdmf/Domain/Grid)"/>"""
+                <xi:include href="./FILES/fields_dl_{cpl_ite}_{i}-{self.mpienv.comm_size-1}.xmf" xpointer="xpointer(//Xdmf/Domain/Grid)"/>"""
             self.xdmf_collec += """
             </Grid>"""
             self.xdmf_collec += """
@@ -426,7 +444,21 @@ class Output:
             with open(fields_file, "w") as file:
                 file.write(self.xdmf_collec)
 
-
+            # PHY XDMF COLLEC
+            fields_file = f"{self.fields_dir}/phydll_phy_fields.xmf"
+            self.xdmf_collec_phy = self.xdmf_collec_phy[:-38] + f"""
+            <Grid Name="./phydll_phy_fields_{cpl_ite}" GridType="Collection" CollectionType="Spatial">"""
+            for i in range(self.mpienv.dsize):
+                self.xdmf_collec_phy += f"""
+                <xi:include href="./FILES/fields_phy_{cpl_ite}_{i}-{self.mpienv.dsize-1}.xmf" xpointer="xpointer(//Xdmf/Domain/Grid)"/>"""
+            self.xdmf_collec_phy += """
+            </Grid>"""
+            self.xdmf_collec_phy += """
+        </Grid>
+    </Domain>
+</Xdmf>"""
+            with open(fields_file, "w") as file:
+                file.write(self.xdmf_collec_phy)
 class Timers:
     """
     Coupling timers
@@ -476,5 +508,3 @@ class Timers:
         Reduce timers to master process with max op
         """
         return self.mpienv.comm.allreduce(np.array([timer]), op=self.mpienv.MPI.MAX)[0]
-
-

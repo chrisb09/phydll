@@ -1,8 +1,9 @@
-"""
-Copyright (c) CERFACS (all rights reserved)
+#!/usr/bin/env python
+""" Copyright (c) CERFACS (all rights reserved)
 @file       placement4mpmd.py
 @details    MPI placement generator
 @autor      A. Serhani
+@email      phydll@cerfacs.fr
 
 Generate a MPI configuration files to carry out processes placement for multi-node PhyDLL
 

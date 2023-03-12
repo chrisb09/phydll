@@ -29,12 +29,15 @@ module mod_cpl
         integer :: phy_ite                                          !> Physical solver iteration
         integer :: ite                                              !> Coupling iteration
         logical :: is_cpl_ite                                       !> Check if it is a coupling iteration
+        integer :: out_freq                                         !> Fields output frequency
+        character(len=ll) :: out_dir                                !> Output directory
         character(len=6) :: code_name = "phydll"                    !> CWIPI's code name
         character(len=3) :: app_name = "phy"                        !> CWIPI's application name
         character(len=2) :: distant_name                            !> CWIPI's distant application name
-        integer :: dim_geom                                         !> CWIPI's geometric dimension
         double precision :: tol_geom                                !> CWIPI's geometric tolerence
-        integer :: out_freq                                         !> CWIPI's mesh/fields output frequency
+        double precision, dimension(:), allocatable :: cwp_coords   !> CWIPI's coordinates table
+        integer, dimension(:), allocatable :: cwp_connecindex       !> CWIPI's connectivity indexes tables
+        integer, dimension(:), allocatable :: cwp_connec            !> CWIPI's connectivity table
         integer :: cwp_nlocpoints                                   !> CWIPI's number of located points
         integer :: cwp_nnotlocpoints                                !> CWIPI's number of not-located points
         integer, dimension(:), allocatable :: cwp_locpoints         !> CWIPI's array of located points
@@ -62,7 +65,6 @@ module mod_cpl
         cpl%dl_fields%count = iinit
         cpl%dl_fields%ic = 0
         cpl%freq = iinit
-        cpl%dim_geom = iinit
         cpl%out_freq = iinit
         cpl%tol_geom = dbinit
         cpl%cwp_nlocpoints = iinit

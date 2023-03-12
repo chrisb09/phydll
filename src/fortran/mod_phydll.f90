@@ -26,7 +26,10 @@ module mod_phydll
             procedure :: init                                   !< Initialize PhyDLL
             procedure :: finalize                               !< Finalize PhyDLL
 
+            procedure :: recv_cpl_params                        !< Receive coupling parameters from Python (DL engine)
             procedure :: map_directscheme_processes             !< Map DirectScheme processes between Physical solver and DL engine
+            procedure :: init_cwp_interf                        !< Initialize CWIPI interface
+            procedure :: create_cwp_cpl                         !< Create CWIPI coupling (for InterpolationScheme)
 
             procedure :: set_phy_mesh                           !< Set Physical mesh in PhyDLL
             procedure :: send_phy_mesh                          !< Send Physical mesh to DL engine
@@ -38,6 +41,7 @@ module mod_phydll
             procedure :: apply_dl_field                         !< Apply received DL fields
             procedure :: check_fields_count                     !< Check count of set and applied fields
 
+            procedure :: check_mpmd                             !< Check if PhyDLL and MPMD are enabled
             procedure :: bcast_signal                           !< Broadcast signal to DL engine in loop-mode
 
             procedure :: directscheme_anb_send_phy_fields       !< DirectScheme: asynchronous non-blocking (anb) send of Physical fields
@@ -66,7 +70,7 @@ module mod_phydll
     !   [inout] self    PhyDLL object
     !   [out]   glcomm  Global communicator (MPI_COMM_WORLD)
     !   [out]   comm    Local communicator
-    !   [out]   status  Status of phydll (returns 1)
+    !   [in]    status  Status of phydll (returns 1 if enabled, 0 otherwise)
     !*********************************************************************
         implicit none
 
@@ -77,23 +81,19 @@ module mod_phydll
         integer, intent(out) :: status
 
         ! local
-        character(len=ml) :: enable_phydll
         integer :: color = 666
         integer :: ierror
-
-        ! Check if PhyDLL is enabled
-        call get_environment_variable("ENABLE_PHYDLL", enable_phydll)
-        if (enable_phydll /= "TRUE") then
-            status = 0
-            write(*,*) "you should enable it" ! @dbg
-            return
-        end if
+        logical :: returned
 
         ! Pointers targeting
         self%env = env_t()
         self%io%env => self%env
+
         self%cpl = cpl_t()
+        self%io%cpl => self%cpl
+
         self%mesh = mesh_t()
+        self%io%mesh => self%mesh
 
         ! Global communicator
         self%env%glcomm = mpi_comm_world
@@ -110,21 +110,69 @@ module mod_phydll
         self%env%distant_rank = self%env%comm_size
         self%env%distant_size = self%env%glcomm_size - self%env%comm_size
 
-        call self%io%log_msg("*****************************************************************************", 0)
-        call self%io%log_msg("************************* <<< Welcome to PhyDLL >>> *************************", 0)
-        call self%io%log_msg("*****************************************************************************", 0)
-
-        ! Recv coupling paramters from Python
-        call recv_cpl_params(self)
-
-        if (self%cpl%is_interpolationscheme) then
-            call init_cwp_interf(self)
-        end if
-
         ! Set communicators
         glcomm = self%env%glcomm
         comm = self%env%comm
-        status = 1
+
+        ! Check MPMD
+        call self%check_mpmd(status, returned)
+        if (returned) return
+
+        ! Print PhyDLL
+        call self%io%log_msg(repeat("*", 87), 0)
+        call self%io%log_msg(repeat("*", 30) // " <<< Welcome to PhyDLL >>> " // repeat("*", 30), 0)
+        call self%io%log_msg(repeat("*", 87), 0)
+
+        ! Recv coupling paramters from Python
+        call self%recv_cpl_params()
+
+        ! Initialize cwipi interface
+        if (self%cpl%is_interpolationscheme) then
+            call self%init_cwp_interf()
+        end if
+    end subroutine
+
+
+    subroutine check_mpmd(self, status, returned)
+    !*********************************************************************
+    !> Check if MPMD and PhyDLL enabling
+    !
+    ! Args:
+    !   [out]   status    Check if PhyDLL is enabled (envvar: ENABLE_PHYDLL)
+    !   [out]   returned  Condition to do not continue PhyDLL init
+    !*********************************************************************
+        implicit none
+
+        ! in/out
+        class(phydll_t), intent(inout) :: self
+        integer, intent(out) :: status
+        logical, intent(out) :: returned
+
+        ! local
+        character(len=ml) :: enable_phydll
+
+        ! Check if env var is defined
+        call get_environment_variable("ENABLE_PHYDLL", enable_phydll)
+
+        ! Set status
+        status = 0
+        if (trim(enable_phydll) == "TRUE") status = 1
+
+        ! Check mpmd
+        returned = .false.
+        if (self%env%glcomm_size == self%env%comm_size) then
+            if (status == 1) then
+                call self%io%log_err("Run PhyDLL coupling in MPMD mode or unset ENABLE_PHYDLL (env var)")
+            else
+                returned = .true.
+            end if
+        else
+            if (status == 0) then
+                call self%io%log_warn("MPMD is running, but PhyDLL is not enabled")
+                call self%io%log_warn("Ignore this warning if another coupling is running")
+                returned = .true.
+            end if
+        end if
     end subroutine
 
 
@@ -153,38 +201,80 @@ module mod_phydll
         call mpi_bcast(self%cpl%dl_fields%count, 1, mpi_integer, self%env%distant_rank, self%env%glcomm, ierror)
         call mpi_bcast(self%cpl%freq, 1, mpi_integer, self%env%distant_rank, self%env%glcomm, ierror)
         call mpi_bcast(self%cpl%dl_mesh_type, sl, mpi_character, self%env%distant_rank, self%env%glcomm, ierror)
+        call mpi_bcast(self%cpl%out_freq, 1, mpi_integer, self%env%distant_rank, self%env%glcomm, ierror)
+        call mpi_bcast(self%cpl%out_dir, ll, mpi_character, self%env%distant_rank, self%env%glcomm, ierror)
+
+        self%cpl%is_interpolationscheme = trim(self%cpl%scheme) == "IS" .or. trim(self%cpl%scheme) == "InterpolationScheme"
+        self%cpl%is_directscheme = trim(self%cpl%scheme) == "DS" .or. trim(self%cpl%scheme) == "DirectScheme"
 
         call self%io%log_msg("(PhyDLL) -----> coupling params:", 0)
-        write(msg, "(A23, A)")  "Coupling interface = ",    self%cpl%scheme;        call self%io%log_msg(msg, 1)
-        write(msg, "(A23, I0)") "Coupling frequency = ",    self%cpl%freq;          call self%io%log_msg(msg, 1)
-        write(msg, "(A23, I0)") "Count of phy fields = ",  self%cpl%phy_fields%count;   call self%io%log_msg(msg, 1)
-        write(msg, "(A23, I0)") "Count of dl fields = ",   self%cpl%dl_fields%count;    call self%io%log_msg(msg, 1)
-        write(msg, "(A23, A)")  "DL mesh type = ",          self%cpl%dl_mesh_type;  call self%io%log_msg(msg, 1)
-
-        self%cpl%is_interpolationscheme = trim(self%cpl%scheme) == "IS" .or. &
-                                            trim(self%cpl%scheme) == "InterpolationScheme"
-
-        self%cpl%is_directscheme = trim(self%cpl%scheme) == "DS" .or. &
-                                     trim(self%cpl%scheme) == "DirectScheme"
+        write(msg, "(a, a)")  "Coupling interface = ",  self%cpl%scheme;            call self%io%log_msg(msg, 1)
+        write(msg, "(a, i0)") "Coupling frequency = ",  self%cpl%freq;              call self%io%log_msg(msg, 1)
+        write(msg, "(a, i0)") "Count of phy fields = ", self%cpl%phy_fields%count;  call self%io%log_msg(msg, 1)
+        write(msg, "(a, i0)") "Count of dl fields = ",  self%cpl%dl_fields%count;   call self%io%log_msg(msg, 1)
+        write(msg, "(a, a)")  "DL mesh type = ",        self%cpl%dl_mesh_type;      call self%io%log_msg(msg, 1)
+        if (trim(self%cpl%dl_mesh_type) /= "NC") then
+            write(msg, "(a, i0)") "Output frequency = ",  self%cpl%out_freq;        call self%io%log_msg(msg, 1)
+            if (self%cpl%out_freq > 0) then
+                if (self%cpl%is_interpolationscheme) then
+                    write(msg, "(a, a)") "Output directory = ",  "./cwipi"; call self%io%log_msg(msg, 1)
+                else if (self%cpl%is_directscheme) then
+                    write(msg, "(a, a)") "Output directory = ", trim(self%cpl%out_dir); call self%io%log_msg(msg, 1)
+                end if
+            end if
+        end if
     end subroutine
 
 
     subroutine init_cwp_interf(self)
     !*********************************************************************
-    !> Exchange CWIPI parameters from Python: - CWP Geometric dimension
-    !                                         - CWP Geometric tolerence
+    !> Exchange CWIPI parameters from Python: - CWP Geometric tolerence
     !                                         - CWP Output frequency
     !                                         - CWP application name
     !                                         - CWP distant application name
     !> Init CWIPI coupling
-    !> Create CWIPI coupling
     !
     ! Args:
     !   [inout] self    PhyDLL object
     !*********************************************************************
 #ifdef CWIPI
-        use cwipi, only: cwipi_init_f, cwipi_create_coupling_f, cwipi_create_coupling_f, cwipi_cpl_parallel_with_part, &
-                        cwipi_static_mesh, cwipi_solver_cell_vertex
+        use cwipi, only: cwipi_init_f
+#endif
+        implicit none
+
+        ! in/out
+        class(phydll_t), intent(inout) :: self
+
+        ! local
+        character(len=ll) :: msg
+        integer :: ierror
+
+        ! Broadcasts
+        call mpi_bcast(self%cpl%tol_geom, 1, mpi_double_precision, self%env%distant_rank, self%env%glcomm, ierror)
+        call mpi_bcast(self%cpl%app_name, 3, mpi_character, self%env%host_rank, self%env%glcomm, ierror)
+        call mpi_bcast(self%cpl%distant_name, 2, mpi_character, self%env%distant_rank, self%env%glcomm, ierror)
+
+#ifdef CWIPI
+        call cwipi_init_f(self%env%glcomm, self%cpl%app_name, self%env%comm)
+#endif
+        call self%io%log_msg("(PhyDLL) -----> CWIPI params:", 0)
+        write(msg, "(a, f8.6)") "CWP geometric tolerence = ",   self%cpl%tol_geom;      call self%io%log_msg(msg, 1)
+        write(msg, "(a, a)")    "CWP code name = ",             self%cpl%code_name;     call self%io%log_msg(msg, 1)
+        write(msg, "(a, a)")    "CWP application name = ",      self%cpl%app_name;      call self%io%log_msg(msg, 1)
+        write(msg, "(a, a)")    "CWP distant name = ",          self%cpl%distant_name;  call self%io%log_msg(msg, 1)
+    end subroutine
+
+
+    subroutine create_cwp_cpl(self)
+    !*********************************************************************
+    !> Create CWIPI coupling for InterpolationScheme
+    !
+    ! Args:
+    !   [inout] self    PhyDLL object
+    !*********************************************************************
+#ifdef CWIPI
+        use cwipi, only: cwipi_create_coupling_f, cwipi_create_coupling_f, cwipi_cpl_parallel_with_part, &
+                            cwipi_static_mesh, cwipi_solver_cell_vertex
 #endif
         implicit none
 
@@ -195,36 +285,27 @@ module mod_phydll
         character(len=sl) :: output_format
         character(len=sl) :: output_format_option
         character(len=ll) :: msg
-        integer :: ierror
 
         ! Output formats
         output_format = 'Ensight Gold'
         output_format_option = 'text'
 
-        ! Broadcasts
-        call mpi_bcast(self%cpl%dim_geom, 1, mpi_integer, self%env%distant_rank, self%env%glcomm, ierror)
-        call mpi_bcast(self%cpl%tol_geom, 1, mpi_double_precision, self%env%distant_rank, self%env%glcomm, ierror)
-        call mpi_bcast(self%cpl%out_freq, 1, mpi_integer, self%env%distant_rank, self%env%glcomm, ierror)
-        call mpi_bcast(self%cpl%app_name, 3, mpi_character, self%env%host_rank, self%env%glcomm, ierror)
-        call mpi_bcast(self%cpl%distant_name, 2, mpi_character, self%env%distant_rank, self%env%glcomm, ierror)
-
-#ifdef CWIPI
-        ! Init cwipi
-        call cwipi_init_f(self%env%glcomm, self%cpl%app_name, self%env%comm)
-
         ! Create cwipi
-        call cwipi_create_coupling_f(self%cpl%code_name, cwipi_cpl_parallel_with_part, self%cpl%distant_name, &
-            self%cpl%dim_geom, self%cpl%tol_geom, cwipi_static_mesh, cwipi_solver_cell_vertex, self%cpl%out_freq, &
-            output_format, output_format_option)
+#ifdef CWIPI
+        call cwipi_create_coupling_f(       &
+            self%cpl%code_name,             &
+            cwipi_cpl_parallel_with_part,   &
+            self%cpl%distant_name,          &
+            self%mesh%dim,                  &
+            self%cpl%tol_geom,              &
+            cwipi_static_mesh,              &
+            cwipi_solver_cell_vertex,       &
+            self%cpl%out_freq,              &
+            trim(output_format),            &
+            trim(output_format_option)      &
+        )
 #endif
-
-        call self%io%log_msg("(PhyDLL) -----> CWIPI params:", 0)
-        write(msg, "(A26, I0)")    "CWP geometric dimension = ",    self%cpl%dim_geom;      call self%io%log_msg(msg, 1)
-        write(msg, "(A26, F8.6)") "CWP geometric tolerence = ",     self%cpl%tol_geom;      call self%io%log_msg(msg, 1)
-        write(msg, "(A26, I0)")   "CWP output frequency = ",        self%cpl%out_freq;      call self%io%log_msg(msg, 1)
-        write(msg, "(A26, A)")    "CWP code name = ",               self%cpl%code_name;     call self%io%log_msg(msg, 1)
-        write(msg, "(A26, A)")    "CWP application name = ",        self%cpl%app_name;      call self%io%log_msg(msg, 1)
-        write(msg, "(A26, A)")    "CWP distant name = ",            self%cpl%distant_name;  call self%io%log_msg(msg, 1)
+        write(msg, "(a, i0)") "(PhyDLL) -----> CWIPI geometric dimension = ", self%mesh%dim; call self%io%log_msg(msg, 0)
     end subroutine
 
 
@@ -278,10 +359,12 @@ module mod_phydll
         self%mesh%node_coords = node_coords
         self%mesh%local_node_to_global = local_node_to_global
         self%mesh%local_element_to_global = local_element_to_global
+
+        call self%mesh%get_topology()
     end subroutine
 
 
-    subroutine set_mesh_for_interpscheme(self, ncell, nnode, nvertex, node_coords, element_to_node)
+    subroutine set_mesh_for_interpscheme(self, dim, ncell, nnode, nvertex, node_coords, element_to_node)
     !*********************************************************************
     !> Set CWIPI mesh for Physical solver
     !
@@ -298,6 +381,7 @@ module mod_phydll
 
         ! in/out
         class(phydll_t), intent(inout) :: self
+        integer, intent(in) :: dim
         integer, intent(in) :: ncell
         integer, intent(in) :: nnode
         integer, intent(in) :: nvertex
@@ -305,15 +389,18 @@ module mod_phydll
         integer, dimension(:), intent(in) :: element_to_node
 
         ! Mesh scalars
+        self%mesh%dim = dim
         self%mesh%nnode = nnode
         self%mesh%ncell = ncell
         self%mesh%nvertex = nvertex
 
         ! Mesh tables
-        allocate(self%mesh%node_coords(self%mesh%nnode * self%cpl%dim_geom));       self%mesh%node_coords = dbinit
+        allocate(self%mesh%node_coords(self%mesh%nnode * self%mesh%dim));       self%mesh%node_coords = dbinit
         allocate(self%mesh%element_to_node(self%mesh%nvertex * self%mesh%ncell));   self%mesh%element_to_node = iinit
         self%mesh%node_coords = node_coords
         self%mesh%element_to_node = element_to_node
+
+        call self%mesh%get_topology()
     end subroutine
 
 
@@ -340,7 +427,6 @@ module mod_phydll
         class(phydll_t), intent(inout) :: self
 
         ! local
-        integer, dimension(:), pointer :: connec_cwp
         integer :: i
         integer :: checknlp
         integer :: ierror
@@ -348,34 +434,58 @@ module mod_phydll
         character(len=ml) :: location_file
         character(len=ll) :: msg
 
+        ! Create cwp coupling
+        call self%create_cwp_cpl()
+
         exists = .false.
         location_file = ""
 
-        ! Modify connectivity (@dbg)
-        allocate(connec_cwp(self%mesh%nvertex * self%mesh%ncell));  connec_cwp = iinit
-        connec_cwp(1::self%mesh%nvertex) = self%mesh%element_to_node(1::self%mesh%nvertex)
-        connec_cwp(2::self%mesh%nvertex) = self%mesh%element_to_node(3::self%mesh%nvertex)
-        connec_cwp(3::self%mesh%nvertex) = self%mesh%element_to_node(2::self%mesh%nvertex)
-        connec_cwp(4::self%mesh%nvertex) = self%mesh%element_to_node(4::self%mesh%nvertex)
+        ! Reorder connectivity
+        allocate(self%cpl%cwp_connec(self%mesh%nvertex * self%mesh%ncell))
+        self%cpl%cwp_connec = self%mesh%element_to_node
 
-        ! Create connecivity table (@dbg)
-        allocate(self%mesh%connecindex(self%mesh%ncell+1)); self%mesh%connecindex = iinit
+        if (trim(self%mesh%topology_type) == "Tetrahedron") then
+            self%cpl%cwp_connec(2::self%mesh%nvertex) = self%mesh%element_to_node(3::self%mesh%nvertex)
+            self%cpl%cwp_connec(3::self%mesh%nvertex) = self%mesh%element_to_node(2::self%mesh%nvertex)
+
+        else if (trim(self%mesh%topology_type) == "Wedge") then
+            self%cpl%cwp_connec(2::self%mesh%nvertex) = self%mesh%element_to_node(6::self%mesh%nvertex)
+            self%cpl%cwp_connec(3::self%mesh%nvertex) = self%mesh%element_to_node(4::self%mesh%nvertex)
+            self%cpl%cwp_connec(4::self%mesh%nvertex) = self%mesh%element_to_node(2::self%mesh%nvertex)
+            self%cpl%cwp_connec(6::self%mesh%nvertex) = self%mesh%element_to_node(3::self%mesh%nvertex)
+
+        else
+            self%cpl%cwp_connec = self%mesh%element_to_node
+        end if
+
+        ! Connectivity indexes
+        allocate(self%cpl%cwp_connecindex(self%mesh%ncell+1)); self%cpl%cwp_connecindex = iinit
         do i = 1, self%mesh%ncell+1
-            self%mesh%connecindex(i) = (i-1) * self%mesh%nvertex
+            self%cpl%cwp_connecindex(i) = (i-1) * self%mesh%nvertex
         end do
+
+        ! Adapt coords to 2D meshes
+        allocate(self%cpl%cwp_coords(self%mesh%nnode * 3)); self%cpl%cwp_coords = dbinit
+        if (self%mesh%dim == 2) then
+            self%cpl%cwp_coords(1::3) = self%mesh%node_coords(1::2)
+            self%cpl%cwp_coords(2::3) = self%mesh%node_coords(2::2)
+            self%cpl%cwp_coords(3::3) = 0.0
+        else if (self%mesh%dim == 3) then
+            self%cpl%cwp_coords = self%mesh%node_coords
+        end if
 
 #ifdef CWIPI
         ! Define mesh
         call cwipi_define_mesh_f(self%cpl%code_name, self%mesh%nnode, self%mesh%ncell, &
-                                self%mesh%node_coords, self%mesh%connecindex, connec_cwp)
+                                self%cpl%cwp_coords, self%cpl%cwp_connecindex, self%cpl%cwp_connec)
 
         ! Localization
-        write(location_file, "(A, I0, A1, I0)") "./phydll_cwp_locfile-", self%env%comm_size, "-", self%env%distant_size
+        write(location_file, "(a, i0, a1, i0)") "./phydll_cwp_locfile-", self%env%comm_size, "-", self%env%distant_size
         inquire(file=location_file, exist=exists)
         if (exists) then
             call self%io%log_msg("(PhyDLL) -----> CWIPI localization file exits!. Load it ...", 0)
-            write(msg, "(A,A)") "Localization file: ", location_file; call self%io%log_msg(msg, 1)
-            call cwipi_open_location_file_f(self%cpl%code_name,location_file,"r")
+            write(msg, "(a, a)") "Localization file: ", location_file; call self%io%log_msg(msg, 1)
+            call cwipi_open_location_file_f(self%cpl%code_name, location_file, "r")
             call cwipi_load_location_f(self%cpl%code_name)
             call cwipi_close_location_file_f(self%cpl%code_name)
         else
@@ -384,14 +494,13 @@ module mod_phydll
             call cwipi_locate_f(self%cpl%code_name)
             call cwipi_save_location_f(self%cpl%code_name)
             call cwipi_close_location_file_f(self%cpl%code_name)
-            write(msg, "(A,A)") "Localization file saved: ", location_file; call self%io%log_msg(msg, 1)
+            write(msg, "(a, a)") "Localization file saved: ", location_file; call self%io%log_msg(msg, 1)
         end if
 
         ! Get located and not-located points
         call cwipi_get_n_located_pts_f(self%cpl%code_name, self%cpl%cwp_nlocpoints)
         call cwipi_get_n_not_located_pts_f(self%cpl%code_name, self%cpl%cwp_nnotlocpoints)
 #endif
-
         allocate(self%cpl%cwp_locpoints(self%cpl%cwp_nlocpoints));          self%cpl%cwp_locpoints = iinit
         allocate(self%cpl%cwp_notlocpoints(self%cpl%cwp_nnotlocpoints));    self%cpl%cwp_notlocpoints = iinit
 #ifdef CWIPI
@@ -400,8 +509,8 @@ module mod_phydll
 #endif
 
         call self%io%log_msg("Localization results:", 1)
-        write(msg, "(A15, A20, A20)") "MPI rank", "N Located Pts", "N NotLocated Pts";                          call self%io%log_msg(msg, 1)
-        write(msg, "(I15, I20, I20)") self%env%comm_rank, self%cpl%cwp_nlocpoints, self%cpl%cwp_nnotlocpoints;  call self%io%log_msg(msg, 1, .true.)
+        write(msg, "(a15, a20, a20)") "MPI rank", "N Located Pts", "N NotLocated Pts";                          call self%io%log_msg(msg, 1)
+        write(msg, "(i15, i20, i20)") self%env%comm_rank, self%cpl%cwp_nlocpoints, self%cpl%cwp_nnotlocpoints;  call self%io%log_msg(msg, 1, .true.)
 
         ! Check if not located points exist, then query default values from python
         call mpi_reduce(self%cpl%cwp_nnotlocpoints, checknlp, 1, mpi_integer, mpi_max, self%env%host_rank, self%env%comm, ierror)
@@ -476,6 +585,9 @@ module mod_phydll
 
         ! Map processes
         call self%map_directscheme_processes()
+
+        ! Geometric dimension
+        call mpi_bcast(self%mesh%dim, 1, mpi_integer, self%env%host_rank, self%env%glcomm, ierror)
 
         ! Local connectivity
         cnt(1) = self%mesh%nvertex * self%mesh%ncell
@@ -617,14 +729,14 @@ module mod_phydll
 
         ! DL fields
         if (self%cpl%dl_fields%ic /= self%cpl%dl_fields%count) then
-            write(msg, "('Count of DL fields practically applied (=', I0, ') is different from that is declared (=', I0, ')' )") &
+            write(msg, "('Count of DL fields practically applied (=', i0, ') is different from that is declared (=', i0, ')' )") &
                 self%cpl%dl_fields%ic, self%cpl%dl_fields%count
             call self%io%log_err(msg)
         end if
 
         ! Solver fields
         if (self%cpl%phy_fields%ic /= self%cpl%phy_fields%count) then
-            write(msg, "('Count of Solver fields practically set (=', I0, ') is different from that is declared (=', I0, ')' )") &
+            write(msg, "('Count of Solver fields practically set (=', i0, ') is different from that is declared (=', i0, ')' )") &
                 self%cpl%phy_fields%ic, self%cpl%phy_fields%count
             call self%io%log_err(msg)
         end if
@@ -1068,7 +1180,9 @@ module mod_phydll
 
         ! Deallocate CWIPI arrays
         if (self%cpl%is_interpolationscheme) then
-            deallocate(self%mesh%connecindex)
+            deallocate(self%cpl%cwp_coords)
+            deallocate(self%cpl%cwp_connecindex)
+            deallocate(self%cpl%cwp_connec)
             deallocate(self%cpl%cwp_locpoints)
             deallocate(self%cpl%cwp_notlocpoints)
             deallocate(self%cpl%cwp_not_loc_pts_default_vals)

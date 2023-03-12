@@ -30,6 +30,7 @@ class PhyMesh:
         connec                  (np.array)  Local partition: connectivity table
         connec_r                (np.array)  Local partition: reshaped connectivity table -> (nelmt, nmeshv)
         connecindex             (np.array)  Local partition: connectivity indexes (for CWIPI)
+        dim                     (int)       Geometric dimension
         global_nvertex          (int)       Full mesh: number of vertices
         global_nelmt            (int)       Full mesh: number of elements
         nmeshv                  (int)       Number of vertices per element
@@ -38,6 +39,7 @@ class PhyMesh:
         nelmt                   (int)       Local partition: number of elements
         nvertex_dup             (int)       Local partition: number of veritices with duplicated nodes
         dmpi_saves_rep          (char)      Repository to save/load partitionning data
+        topo_type               (char)      Topology type of mesh elements
     """
     def __init__(self, env, io):
         """
@@ -58,6 +60,7 @@ class PhyMesh:
         self.connec_r = np.array([], dtype="int32")
         self.connecindex = np.array([], dtype="int32")
 
+        self.dim = 0
         self.global_nvertex = 0
         self.global_nelmt = 0
         self.nmeshv = 0
@@ -66,7 +69,7 @@ class PhyMesh:
         self.nelmt = 0
         self.nvertex_dup = 0
 
-        self.dmpi_saves_rep = "./dmpi_saves"
+        self.phydll_mesh_rep = "./PhyDLL_MESH"
 
 
     def create_python_mesh(self):
@@ -74,7 +77,12 @@ class PhyMesh:
         Create python local mesh
         """
         dblv = 1
-        self.output.log_hl1(f"Mesh type = {self.__class__.__name__}\n", dblv)
+        self.output.log_hl1(f"Mesh type = {self.__class__.__name__}", dblv)
+
+        buf = np.zeros(1, dtype="i")
+        self.mpienv.glcomm.Bcast(buf=[buf, 1, self.mpienv.MPI.INTEGER], root=self.mpienv.drank)
+        self.dim = buf[0]
+        self.output.log_hl1(f"Mesh dimension = {self.dim}D\n")
 
         self.output.log_hl1("Retrieve Physical solver partitions ...", dblv)
         tic = self.mpienv.MPI.Wtime()
@@ -195,9 +203,7 @@ class PhyMesh:
         # Python partition node coordinates
         coords_list, _ = coords
         coords_list = np.array(self._flatten_list(coords_list))
-        self.coords = np.stack((coords_list[::3][self.idx_unique],
-                                coords_list[1::3][self.idx_unique],
-                                coords_list[2::3][self.idx_unique]), axis=1).ravel()
+        self.coords = np.stack(tuple(coords_list[i::self.dim][self.idx_unique] for i in range(self.dim)), axis=1).ravel()
         self.nvertex = ln2g_flatarr.shape[0]
 
         toc = self.mpienv.MPI.Wtime()
@@ -209,12 +215,12 @@ class PhyMesh:
         _, nelmt_list = lelm2g
         self.nelmt = sum(nelmt_list)
 
-        if self.mpienv.is_commhrank and not os.path.isdir(self.dmpi_saves_rep):
-            os.mkdir(self.dmpi_saves_rep)
+        if self.mpienv.is_commhrank and not os.path.isdir(self.phydll_mesh_rep):
+            os.mkdir(self.phydll_mesh_rep)
 
-        connec_file = f"{self.dmpi_saves_rep}/connec_file-{self.global_nvertex}-{self.mpienv.dsize}-{self.mpienv.comm_size}-{self.mpienv.comm_rank}.npy"
+        connec_file = f"{self.phydll_mesh_rep}/connec_file-{self.global_nvertex}-{self.mpienv.dsize}-{self.mpienv.comm_size}-{self.mpienv.comm_rank}.npy"
         if os.path.exists(connec_file):
-            self.output.log_hl3("Connectivity table exists! Load it ...", dblv)
+            self.output.log_hl3(f"Connectivity table exists! Load it ... (file={connec_file})", dblv)
             self.connec = np.load(connec_file)
 
         else:
@@ -240,8 +246,15 @@ class PhyMesh:
         self.output.log_hl2(timer=(toc-tic), dblv=dblv)
 
         self.output.log_hl2(f"global nvertex = {self.global_nvertex}", dblv)
-        self.output.log_hl2(f"global nelmt = {self.global_nelmt}", dblv)
+        self.output.log_hl2(f"global nelmt = {self.global_nelmt}\n", dblv)
         self.output.log_hl2(f"nvertex per elm = {self.nmeshv}", dblv)
+
+        if self.nmeshv == 3: self.topo_type = "Triangle"
+        elif self.nmeshv == 4 and self.dim == 2: self.topo_type = "Quadrilateral"
+        elif self.nmeshv == 4 and self.dim == 3: self.topo_type = "Tetrahedron"
+        elif self.nmeshv == 6: self.topo_type = "Wedge"
+        elif self.nmeshv == 8: self.topo_type = "Hexahedron"
+        self.output.log_hl2(f"Element topology = {self.topo_type}\n", dblv)
 
         message = f"{'MPI_rank':<12} {'nvertex':<15} {'connecsize':<20} {'(glcomm) dlrank: corresp. Phy rank':35}"
         self.output.log_hl2(message, dblv)
@@ -318,8 +331,10 @@ class VoxGrid:
         self.connec = np.array([], dtype="int32")
         self.connec_r = np.array([], dtype="int32")
 
+        self.dim = 3
         self.nvertex = 0
         self.nmeshv = 8
+        self.topo_type = "Hexahedron"
 
         # Overlap
         self.ol_x_n_elmts = 0
@@ -334,12 +349,12 @@ class VoxGrid:
         self.with_overlap = self.input.python_mesh["overlap"]["overlap"]
         self.cartesian3d = None
         self.coord3d = []
-        self.proc_neighb_left = -1
-        self.proc_neighb_right = -1
-        self.proc_neighb_down = -1
-        self.proc_neighb_up = -1
-        self.proc_neighb_back = -1
-        self.proc_neighb_front = -1
+        self.proc_neighb_left = self.mpienv.MPI.PROC_NULL
+        self.proc_neighb_right = self.mpienv.MPI.PROC_NULL
+        self.proc_neighb_down = self.mpienv.MPI.PROC_NULL
+        self.proc_neighb_up = self.mpienv.MPI.PROC_NULL
+        self.proc_neighb_back = self.mpienv.MPI.PROC_NULL
+        self.proc_neighb_front = self.mpienv.MPI.PROC_NULL
 
 
     def create_python_mesh(self):
@@ -347,7 +362,9 @@ class VoxGrid:
         Wrapper: Create and partitionate voxgrid
         """
         dblv = 1
-        self.output.log_hl1(f"Mesh type = f{self.__class__.__name__}\n", dblv)
+        self.output.log_hl1(f"Mesh type = {self.__class__.__name__}", dblv)
+        self.output.log_hl1(f"Mesh dimension = {self.dim}D\n")
+
 
         self.output.log_hl1("Get mesh bounds ...", dblv)
         tic = self.mpienv.MPI.Wtime()
@@ -402,9 +419,9 @@ class VoxGrid:
         voxgrid_zmax = voxgrid_zmin + (voxgrid_nz - 1) * dx
 
         dblv = 2
-        self.output.log_hl2(f"{'xmin':<8} = {voxgrid_xmin:10.6e}, {'xmax':<8} = {voxgrid_xmax:10.6e}", dblv)
-        self.output.log_hl2(f"{'ymin':<8} = {voxgrid_ymin:10.6e}, {'ymax':<8} = {voxgrid_ymax:10.6e}", dblv)
-        self.output.log_hl2(f"{'zmin':<8} = {voxgrid_zmin:10.6e}, {'zmax':<8} = {voxgrid_zmax:10.6e}", dblv)
+        self.output.log_hl2(f"{'xmin':<8} = {voxgrid_xmin:10.6e}, {'':<4} xmax = {voxgrid_xmax:10.6e}", dblv)
+        self.output.log_hl2(f"{'ymin':<8} = {voxgrid_ymin:10.6e}, {'':<4} ymax = {voxgrid_ymax:10.6e}", dblv)
+        self.output.log_hl2(f"{'zmin':<8} = {voxgrid_zmin:10.6e}, {'':<4} zmax = {voxgrid_zmax:10.6e}", dblv)
         self.output.log_hl2(f"{'dx':<8} = {dx:10.6e}", dblv)
         self.output.log_hl2(f"{'nvertex':<8} = {voxgrid_nx * voxgrid_ny * voxgrid_nz}", dblv)
         self.output.log_hl2(f"{'nelmts':<8} = {(voxgrid_nx - 1) * (voxgrid_ny - 1) * (voxgrid_nz - 1)}")
@@ -477,6 +494,7 @@ class VoxGrid:
         connec[7::self.nmeshv] = array_i + 1 + (array_j+1)*nx + (array_k+1)*nx*ny
 
         self.connec_r = connec.reshape((nelmt, self.nmeshv))
+
         return nvertex, nelmt, coords, connecindex, connec
 
 
@@ -520,7 +538,7 @@ class VoxGrid:
 
         dblv = 3
         self.output.log_hl2(f"MPI Cart dim = {dimpart}", dblv)
-        self.output.log_hl2(f"MPI proc null = {self.mpienv.MPI.PROC_NULL}", dblv)
+        self.output.log_hl2(f"MPI proc null := {self.mpienv.MPI.PROC_NULL}", dblv)
         self.output.log_hl2(f"MPI Grid: Coordinates and neighbours ranks", dblv)
         self.output.log_hl3(f"{'MPI rank':<10} {'Coords':<15} {'Left':<10} {'Right':<10} {'Down':<10} {'Up':<10} {'Back':<10} {'Front':<10}", dblv)
         self.output.log_hl3(f"{self.mpienv.comm_rank:<10} {str(self.coord3d):<15} {self.proc_neighb_left:<10} {self.proc_neighb_right:<10} {self.proc_neighb_down:<10} {self.proc_neighb_up:<10} {self.proc_neighb_back:<10} {self.proc_neighb_front:<10}", dblv, allmpi=True)

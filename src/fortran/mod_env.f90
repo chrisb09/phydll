@@ -22,6 +22,7 @@ module mod_env
         integer :: distant_rank                                 !< Distant rank (DL master rank)
         integer :: distant_size                                 !< Distant size (Size of DL comm)
         integer :: pydest                                       !< Corresponding DL rank (for dMPI/NC couplings)
+        logical :: enabled                                      !< Check if PhyDLL is enabled
         integer, dimension(2) :: requests                       !< Array of MPI requests (1) issend (2) irecv
         integer, dimension(mpi_status_size, 2) :: statuses      !< Array of MPI statuses of (1) issend (2) irecv
         integer, dimension(:), allocatable :: sep_requests      !< @dbg Array of MPI requests for separate communications

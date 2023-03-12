@@ -55,7 +55,7 @@ module phydll
     ! Args:
     !   [out]   glcomm    Global communicator (MPI_COMM_WORLD)
     !   [out]   comm      Local communicator
-    !   [out]   status    Status of phydll (returns 1)
+    !   [out]   status    Status of phydll (returns 1 if enabled, 0 otherwise)
     !*********************************************************************
         implicit none
 
@@ -64,6 +64,7 @@ module phydll
         integer, intent(out) :: comm
         integer, intent(out) :: status
 
+        ! Initialize PhyDLL
         call ph%init(glcomm, comm, status)
     end subroutine
 
@@ -113,7 +114,7 @@ module phydll
         implicit none
 
         ! in/out
-        integer, optional, intent(in)               :: dim
+        integer, intent(in)                         :: dim
         integer, intent(in)                         :: ncell
         integer, intent(in)                         :: nnode
         integer, intent(in)                         :: nvertex
@@ -131,7 +132,7 @@ module phydll
                     local_element_to_global=local_element_to_global)
             call ph%send_phy_mesh()
         else
-            call ph%set_mesh_for_interpscheme(ncell=ncell, nnode=nnode, nvertex=nvertex, &
+            call ph%set_mesh_for_interpscheme(dim=dim, ncell=ncell, nnode=nnode, nvertex=nvertex, &
                     node_coords=node_coords, element_to_node=element_to_node)
         end if
 
@@ -139,7 +140,7 @@ module phydll
             call ph%define_locate_mesh_for_interpscheme()
         end if
 
-        call ph%io%log_msg("(PhyDLL) ----> Coupling mesh has been set !", 0)
+        call ph%io%log_msg("(PhyDLL) -----> Coupling mesh has been set !", 0)
 
         call ph%allocate_fields()
     end subroutine
@@ -183,7 +184,7 @@ module phydll
             if (idx > ph%cpl%phy_fields%count .or. ph%cpl%phy_fields%ic > ph%cpl%phy_fields%count) then
                 write(msg, "('Count of Phy fields (idx=', i0, ') practically applied (=', I0, ') is different from that is declared (=', I0, ')' )") &
                     idx, ph%cpl%phy_fields%ic, ph%cpl%phy_fields%count
-                call ph%io%log_err(trim(msg))
+                call ph%io%log_err(msg)
             end if
 
             call ph%set_phy_field(field, label, idx)
@@ -226,13 +227,13 @@ module phydll
 
             end if
 
-            write(msg, "('(PhyDLL) -----> Coupling ite (Phy ite) = ', I0, ' (', I0, ') ...')" ) ph%cpl%ite, ph%cpl%phy_ite
-            call ph%io%log_msg(trim(msg), 1)
+            write(msg, "('(PhyDLL) -----> Coupling ite (Phy ite) = ', i0, ' (', i0, ') ...')" ) ph%cpl%ite, ph%cpl%phy_ite
+            call ph%io%log_msg(msg, 1)
 
-            call ph%io%log_msg("(PhyDLL) -----> Phy fields sent!", 1)
+            call ph%io%log_msg("(PhyDLL) -----> Phy fields sent!", 2)
             do i = 1, ph%cpl%phy_fields%count
-                write(msg, "('(', i0, ')', X, A)") ph%cpl%phy_fields%index(i), trim(ph%cpl%phy_fields%label(i))
-                call ph%io%log_msg(trim(msg), 4)
+                write(msg, "('(', i0, ')', x, a)") ph%cpl%phy_fields%index(i), trim(ph%cpl%phy_fields%label(i))
+                call ph%io%log_msg(msg, 5)
             end do
 
             ph%cpl%phy_fields%ic = 0
@@ -255,8 +256,7 @@ module phydll
                 call ph%interpscheme_wait_nb_recv()
                 call ph%interpscheme_handle_notlocpoints()
             end if
-
-            call ph%io%log_msg("(PhyDLL) -----> DL fields received! To be applied on:", 1)
+            call ph%io%log_msg("(PhyDLL) -----> DL fields received! To be applied on:", 2)
         end if
     end subroutine
 
@@ -290,15 +290,25 @@ module phydll
             ph%cpl%dl_fields%ic = ph%cpl%dl_fields%ic + 1
 
             if (index > ph%cpl%dl_fields%count .or. ph%cpl%dl_fields%ic > ph%cpl%dl_fields%count) then
-                write(msg, "('Count of DL fields (idx=', i0, ') practically applied (=', I0, ') is different from that is declared (=', I0, ')' )") &
+                write(msg, "('Count of DL fields (idx=', i0, ') practically applied (=', i0, ') is different from that is declared (=', i0, ')' )") &
                     index, ph%cpl%dl_fields%ic, ph%cpl%dl_fields%count
-                call ph%io%log_err(trim(msg))
+                call ph%io%log_err(msg)
             end if
 
             call ph%apply_dl_field(field, label, index)
 
-            write(msg, "('(', i0, ')', X, A)") ph%cpl%dl_fields%index(index), trim(ph%cpl%dl_fields%label(index))
-            call ph%io%log_msg(trim(msg), 4)
+            write(msg, "('(', i0, ')', x, a)") ph%cpl%dl_fields%index(index), trim(ph%cpl%dl_fields%label(index))
+            call ph%io%log_msg(msg, 5)
+
+#ifdef HDF5
+            if (ph%cpl%out_freq > 0 .and. trim(ph%cpl%dl_mesh_type) == "phymesh" .and. ph%cpl%is_directscheme) then
+                if (mod(ph%cpl%ite - 1 + ph%cpl%out_freq, ph%cpl%out_freq) == 0) then
+                    call ph%io%save_exch_fields()
+                    write(msg, "(a, a)") "(PhyDLL) -----> Exch fields saved in ", trim(ph%cpl%out_dir)
+                    call ph%io%log_msg(msg, 2)
+                end if
+            end if
+#endif
         end if
     end subroutine
 

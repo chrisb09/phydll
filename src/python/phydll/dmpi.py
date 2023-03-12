@@ -223,18 +223,20 @@ class dMPI:
         Args:
             array   (np.array) Array of shape: (dl_nfields, mesh.nvertex)
         """
-        if self.dl_nfields == 1:
-            self.dl_fields = array.reshape((1, -1))
-
-        else:
-            for i in range(self.dl_nfields):
-                if self.mesh_type == "phymesh":
-                    idx_sort = self.mesh.idx_sort
-                    idx_inverse = self.mesh.idx_inverse
+        if self.mesh_type == "phymesh":
+            idx_sort = self.mesh.idx_sort
+            idx_inverse = self.mesh.idx_inverse
+            if self.dl_nfields == 1:
+                self.dl_fields = array.reshape((1, -1))[0, :][idx_sort][idx_inverse]
+            else:
+                for i in range(self.dl_nfields):
                     self.dl_fields[i::self.dl_nfields] = array[i, :][idx_sort][idx_inverse]
 
-                elif self.mesh_type == "NC":
-                    self.dl_fields[i::self.dl_nfields] = array[i, :]
+        elif self.mesh_type == "NC":
+            if self.dl_nfields == 1:
+                self.dl_fields = array.reshape((1, -1))
+            else:
+                self.dl_fields[i::self.dl_nfields] = array[i, :]
 
 
     def send(self, dl_fields, index=-1):
@@ -277,11 +279,10 @@ class dMPI:
         toc = self.mpienv.MPI.Wtime()
         self.output.timers.send["wait"] = toc - tic
 
-        if (self.mesh_type == "phymesh") and \
-            ((self.cpl_ite - 1 + self.save_fields_frequency) % self.save_fields_frequency == 0) and \
-            (index in (-1, self.phy_nfields - 1)):
-            self.output.save_fields(phy_fields=self.phy_fields, dl_fields=dl_fields,
-                                    mesh=self.mesh, phy_nfields=self.phy_nfields,
-                                    dl_nfields=self.dl_nfields, cpl_ite=self.cpl_ite)
+        if self.mesh_type == "phymesh" and self.save_fields_frequency > 0:
+            if (self.cpl_ite - 1 + self.save_fields_frequency) % self.save_fields_frequency == 0 and index in (-1, self.phy_nfields - 1):
+                self.output.save_fields(phy_fields=self.phy_fields, dl_fields=dl_fields,
+                                        mesh=self.mesh, phy_nfields=self.phy_nfields,
+                                        dl_nfields=self.dl_nfields, cpl_ite=self.cpl_ite)
 
         self.output.timers.send["full"] = sum(list(self.output.timers.send.values())[:-1])

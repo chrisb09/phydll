@@ -4,7 +4,7 @@
 
 The *Multiple Program Multiple Data* (*MPMD*) execution enables to run in a parallel environment the coupling of the Physical Solver to Deep Learning inference with PhyDLL.  A `slurm` job generator, written in Python, is provided with PhyDLL library ([`./scripts/jobscript_generator.py`](https://gitlab.com/cerfacs/phydll/-/blob/master/scripts/jobscript_generator.py)). It allows to generate a job script to submit with `sbatch`. Furthermore, it generates the correct placement for the MPI tasks. Indeed the placement generator ([`./scripts/placement4mpmd.py`](https://gitlab.com/cerfacs/phydll/-/blob/master/scripts/placement4mpmd.py)) should be located in the same directory as job script generator. The arguments parse by the job script generator are described below.
 
-### Arguments
+### Job script generator
 - **Job script file nime**
     + `--filename`: Job script file name. <br><br>
 
@@ -67,7 +67,7 @@ module load CUDAmodule
 module list
 #########################
 
-# NUMBER OF TASKS
+# NUMBER OF TASKS #######
 export PHY_TASKS_PER_NODE=32
 export DL_TASKS_PER_NODE=4
 export TASKS_PER_NODE=$(($PHY_TASKS_PER_NODE + $DL_TASKS_PER_NODE))

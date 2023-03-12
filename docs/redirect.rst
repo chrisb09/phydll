@@ -18,6 +18,7 @@ Guide to couple your physical solver to neural network inferences.
     :maxdepth: 2
 
     ./tutorials/tutorial
+    ./tutorials/ds_nc
 
 
 Fortran API
