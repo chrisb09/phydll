@@ -11,7 +11,7 @@ module mod_mesh
     implicit none
 
     type mesh_t
-        ! Attributes
+        ! Attributes
         integer :: dim                                                  !< Geometric dimension
         integer :: ncell                                                !< Local number of cells
         integer :: nnode                                                !< Local number of nodes

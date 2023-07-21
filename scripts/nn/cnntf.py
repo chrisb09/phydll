@@ -34,14 +34,12 @@ class ConvNeuralNetTF:
         mesh            (object)    Mesh object
         model           (object)    TF pre-trained model
         pad             (tuple)     Padding tuple ((0, padnx), (0, padny), (0, padnz))
-        on_loc_mask     (np.array)  Localization mask
         modulo          (int)       Network architecture modulo
         padnx           (int)       Padding x axis
         padny           (int)       Padding y axis
         padnz           (int)       Padding z axis
         use_gpu         (bool)      Check if GPU is used (default=True)
         custom_ids      (list)      Custom GPU ids
-        fill_obs        (bool)      Fill obstacles condition
         model_params
         gpu_params
         name
@@ -57,7 +55,6 @@ class ConvNeuralNetTF:
 
         self.model = None
         self.pad = ()
-        self.non_loc_mask = np.array([], dtype="bool")
 
         self.modulo = 0
         self.padnx = 0
@@ -65,7 +62,7 @@ class ConvNeuralNetTF:
         self.padnz = 0
 
 
-    def initialize(self, env, io, mesh, non_loc_mask):
+    def initialize(self, env, io, mesh):
         """"
         Intialize TF CNN object
         """
@@ -82,7 +79,6 @@ class ConvNeuralNetTF:
         except KeyError: self.fill_obs = False
 
         self.set_gpus()
-        self.set_non_loc_mask(non_loc_mask)
         self.init_nn()
 
 
@@ -205,8 +201,6 @@ class ConvNeuralNetTF:
         self.output.timers.init_nn += toc - tic
         self.output.log_hl1(timer=(toc-tic), dblv=dblv)
 
-        self.output.log_hl1(f"Fill obstacles = {self.fill_obs}\n", dblv)
-
         self.output.log_hl1("Padding ...", dblv)
         tic = self.mpienv.MPI.Wtime()
         self.padding()
@@ -216,7 +210,7 @@ class ConvNeuralNetTF:
 
         self.output.log_hl1("First dummy prediction ...", dblv)
         tic = self.mpienv.MPI.Wtime()
-        self.predict(np.ones((1, self.mesh.nx * self.mesh.ny * self.mesh.nz), dtype="float64"))
+        self.predict(np.ones((1, self.mesh.nx_old * self.mesh.ny_old * self.mesh.nz_old), dtype="float64"))
         toc = self.mpienv.MPI.Wtime()
         self.output.timers.init_nn += toc - tic
         self.output.log_hl1(timer=(toc-tic), dblv=dblv)
@@ -237,24 +231,13 @@ class ConvNeuralNetTF:
             dl_fields   (np.array)  Output fields of shape (mesh.nvertex,)
         """
         tic = self.mpienv.MPI.Wtime()
-
-        # Need padding because dimensions must be a multiple of self.modulo
-        array = self._to_structured(array[0], self.non_loc_mask)
-        array = self.mesh.create_fields_with_overlap(array)
-        array = np.pad(array, pad_width=self.pad, mode='edge')
-
-        # 5 dims for prediction: batch, dim_x, dim_y, dim_z, channel
-        array = array.reshape((1,
-                                self.mesh.nx+self.mesh.ol_x_n_elmts_left+self.mesh.ol_x_n_elmts_right+self.padnx,
-                                self.mesh.ny+self.mesh.ol_y_n_elmts_down+self.mesh.ol_y_n_elmts_up+self.padny,
-                                self.mesh.nz+self.mesh.ol_z_n_elmts_back+self.mesh.ol_z_n_elmts_front+self.padnz,
-                                1))
-
+        array = self.mesh.to_structured(array[0])
+        array = np.pad(array, pad_width=self.pad, mode='edge') # Need padding because dimensions must be a multiple of self.modulo
+        array = array.reshape((1, array.shape[0], array.shape[1], array.shape[2], 1)) # 5 dims for prediction: batch, dim_x, dim_y, dim_z, channel
         toc = self.mpienv.MPI.Wtime()
         self.output.timers.pred["prep"] = toc - tic
 
         tic = self.mpienv.MPI.Wtime()
-        # Prediction function
         if self.tfv == 1:
             prediction = self.model.predict(array)
         if self.tfv == 2:
@@ -263,20 +246,16 @@ class ConvNeuralNetTF:
         self.output.timers.pred["run"] = toc - tic
 
         tic = self.mpienv.MPI.Wtime()
-        prediction = np.array(prediction[0,
-                                         :prediction.shape[1]-self.padnx,
-                                         :prediction.shape[2]-self.padny,
-                                         :prediction.shape[3]-self.padnz,
-                                         0],
-                              dtype=array.dtype)
-        prediction = self.mesh.get_fields_without_overlap(prediction)
-        dl_fields = self._to_unstructured(prediction)
+        prediction = np.array(prediction[0, :prediction.shape[1] - self.padnx,
+                                            :prediction.shape[2] - self.padny,
+                                            :prediction.shape[3] - self.padnz, 0], dtype=array.dtype)
+        dl_fields = self.mesh.to_unstructured(prediction)
         toc = self.mpienv.MPI.Wtime()
         self.output.timers.pred["post"] = toc - tic
 
         self.output.timers.pred["full"] = sum(list(self.output.timers.pred.values())[:-1])
 
-        return np.array([dl_fields, np.sin(np.cos(dl_fields))]) # return dl_fields @dbg to remove sin inference
+        return np.array([dl_fields]) 
 
 
     def padding(self):
@@ -284,63 +263,11 @@ class ConvNeuralNetTF:
         Create padding for CNN
         """
         self.modulo = self.model_params["CNN_params"]["shape_modulo"]
-        if (self.mesh.nx+self.mesh.ol_x_n_elmts_left+self.mesh.ol_x_n_elmts_right) % self.modulo > 0:
-            self.padnx = self.modulo-(self.mesh.nx+self.mesh.ol_x_n_elmts_left+self.mesh.ol_x_n_elmts_right) % self.modulo
-        if (self.mesh.ny+self.mesh.ol_y_n_elmts_down+self.mesh.ol_y_n_elmts_up) % self.modulo > 0:
-            self.padny = self.modulo-(self.mesh.ny+self.mesh.ol_y_n_elmts_down+self.mesh.ol_y_n_elmts_up) % self.modulo
-        if (self.mesh.nz+self.mesh.ol_z_n_elmts_back+self.mesh.ol_z_n_elmts_front) % self.modulo > 0:
-            self.padnz = self.modulo-(self.mesh.nz+self.mesh.ol_z_n_elmts_back+self.mesh.ol_z_n_elmts_front) % self.modulo
+        if self.mesh.nx % self.modulo > 0:
+            self.padnx = self.modulo - self.mesh.nx % self.modulo
+        if self.mesh.ny % self.modulo > 0:
+            self.padny = self.modulo - self.mesh.ny % self.modulo
+        if self.mesh.nz % self.modulo > 0:
+            self.padnz = self.modulo - self.mesh.nz % self.modulo
         self.pad = ((0, self.padnx), (0, self.padny), (0, self.padnz))
-
-
-    @staticmethod
-    def fill_obstacles(array, non_loc_mask):
-        """
-        Replace non-located values with nearest located values
-        """
-        h, w, d = array.shape[:3]
-        xx, yy, zz = np.meshgrid(np.arange(h), np.arange(w), np.arange(d), indexing='ij')
-        non_loc_mask = np.reshape(non_loc_mask, (h, w, d), order='F')
-
-        known_x = xx[~non_loc_mask]
-        known_y = yy[~non_loc_mask]
-        known_z = zz[~non_loc_mask]
-        known_v = array[~non_loc_mask]
-        missing_x = xx[non_loc_mask]
-        missing_y = yy[non_loc_mask]
-        missing_z = zz[non_loc_mask]
-
-        interp_values = griddata(
-            (known_x, known_y, known_z), known_v, (missing_x, missing_y, missing_z),
-            method='nearest', fill_value=0
-        )
-
-        interp_array = array.copy()
-        interp_array[missing_x, missing_y, missing_z] = interp_values
-        return interp_array
-
-
-    def _to_structured(self, array, non_loc_mask):
-        """
-        Turn unstructured (nx*ny*nz) array to structured array (nx, ny, nz)
-        """
-        struct_arr = array.reshape((self.mesh.nx, self.mesh.ny, self.mesh.nz), order='F')
-
-        if self.fill_obs:
-            return self.fill_obstacles(struct_arr, non_loc_mask)
-        else:
-            return struct_arr
-
-
-    def _to_unstructured(self, array):
-        """
-        Turn structured (nx, ny, nz) array to unstructured array (nx*ny*nz)
-        """
-        return array.reshape((1, self.mesh.nx * self.mesh.ny * self.mesh.nz), order='F')
-
-
-    def set_non_loc_mask(self, array):
-        """
-        Set localization mask used to fill in the obstacles
-        """
-        self.non_loc_mask = array
+        

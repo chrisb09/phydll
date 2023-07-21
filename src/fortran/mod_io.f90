@@ -14,10 +14,10 @@ module mod_io
 
     implicit none
     type io_t
-        ! Attributes
+        ! Attributes
         type(env_t), pointer :: env                     ! Associated (pointer) to phydll%env
         type(cpl_t), pointer :: cpl                     ! Associated (pointer) to phydll%cpl
-        type(mesh_t), pointer :: mesh                   ! Associated (pointer) to phydll%mesh
+        type(mesh_t), pointer :: mesh                   ! Associated (pointer) to phydll%mesh
 
         ! Procedures
         contains
@@ -116,7 +116,7 @@ module mod_io
         integer, parameter :: hd = 6
         character(len=sl) :: fmt
 
-        ! Header lever
+        ! Header lever
         level = 0
         if (present(lv)) level = lv
 
@@ -129,7 +129,7 @@ module mod_io
         if (level > 0) write(fmt, "('(', i0, 'x, a)')") level * hd
         write(msg, trim(fmt)) trim(message)
 
-        ! Write message
+        ! Write message
         if (all) then
             call self%loggall(trim(msg))
         else
@@ -207,7 +207,7 @@ module mod_io
         lallmpi = .false.
         if (present(allmpi)) lallmpi = allmpi
 
-        ! Write
+        ! Write
         if (lallmpi) then
             write(db_message, "('/!\ /!\ /!\', 4x, i0, '/', i0, 4x, a)") self%env%comm_rank, self%env%comm_size - 1, trim(message)
             call self%loggall(trim(db_message))
@@ -232,7 +232,7 @@ module mod_io
         ! in/out
         class(io_t), intent(inout) :: self
 
-        ! local
+        ! local
         character(len=ll) :: h5file
         character(len=ll) :: datasetname
         integer(hid_t) :: file
@@ -274,7 +274,7 @@ module mod_io
     ! Args:
     !   [in]    self        IO object
     !   [in]    file        HDF5 file_id (integer(hid_t))
-    !   [in]    datasetname Dataset name
+    !   [in]    datasetname Dataset name
     !   [in]    buff_int    Array of integers
     !   [in]    buff_real   Array of reals
     !*********************************************************************
@@ -289,7 +289,7 @@ module mod_io
         integer, dimension(:), optional, intent(in) :: buff_int
         double precision, dimension(:), optional, intent(in) :: buff_real
 
-        ! local
+        ! local
         integer(hid_t) :: dataset
         integer(hid_t) :: dataspace
         integer(hsize_t), dimension(1) :: hdims

@@ -19,11 +19,11 @@ def main():
 
     # Pre-processing
     phydll.pre_processing()
-    dl.initialize(env=phydll.mpienv,
-                io=(phydll.input, phydll.output),
-                mesh=phydll.mesh,
-                non_loc_mask=phydll.cplinterf.non_loc_mask
-                )
+    dl.initialize(
+        env=phydll.mpienv,
+        io=(phydll.input, phydll.output),
+        mesh=phydll.mesh,
+    )
 
     while phydll.fsignal:
         phy_fields = phydll.receive_phy_fields()

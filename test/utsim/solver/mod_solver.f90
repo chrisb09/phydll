@@ -98,14 +98,15 @@ module mod_solver
         class(solver_t), intent(inout) :: self
 
         character(len=ll) :: message
+        double precision :: rdm_time
 
         deallocate(self%coords)
         deallocate(self%element_to_node)
         deallocate(self%local_node_to_global)
         deallocate(self%local_element_to_global)
 
-        write(message, "(a, 'FULL TIME = ', f13.6, ' s', a)") ""//new_line("a"), mpi_wtime()-self%time, ""//new_line("a")
-        if (self%db_mesh_info) call self%log(message)
+        call mpi_allreduce(mpi_wtime()-self%time, rdm_time, 1, MPI_DOUBLE_PRECISION, MPI_MAX, self%comm, self%ierr)
+        write(message, "(a, 'WallTime = ', f13.6, ' s', a)") new_line("a"), rdm_time, new_line("a"); call self%log(message)
 
         call mpi_finalize(self%ierr)
     end subroutine

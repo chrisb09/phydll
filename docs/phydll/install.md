@@ -85,7 +85,7 @@ CWIPI website: [https://w3.onera.fr/cwipi/](https://w3.onera.fr/cwipi/).
 We recommand the version: `0.12.0`
 ```bash
 wget https://w3.onera.fr/cwipi/sites/w3.onera.fr.cwipi/files/u4/cwipi-0.12.0.tgz
-tar -zxvf cwipi-0.12.0.tar.gz
+tar -zxvf cwipi-0.12.0.tgz
 mkdir CWIPI
 cd CWIPI
 ```
@@ -107,7 +107,7 @@ export PYLIB=<Python library file>   # eg. ~/env/lib/libpython.so
 + Compilation:
 ```bash
 CC=$CC CXX=$CXX FC=$FC cmake -DCWP_ENABLE_PYTHON_BINDINGS=ON -DCWP_ENABLE_Fortran=ON \
--DCWP_BUILD_DOCUMENTATION=OFF -DPYTHON_EXECUTABLE=$PYINTERP -DCYTHON_EXECUTABLE=$CYINTREP \
+-DCWP_BUILD_DOCUMENTATION=OFF -DPYTHON_EXECUTABLE=$PYINTERP -DCYTHON_EXECUTABLE=$CYINTERP \
 -DPYTHON_LIBRARY=$PYLIB -DCMAKE_INSTALL_PREFIX=$PWD -DCMAKE_CWP_INSTALL_PYTHON_DIR=$PWD \
 ../cwipi-0.12.0
 ```

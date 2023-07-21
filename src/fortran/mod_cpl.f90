@@ -35,7 +35,7 @@ module mod_cpl
         character(len=3) :: app_name = "phy"                        !> CWIPI's application name
         character(len=2) :: distant_name                            !> CWIPI's distant application name
         double precision :: tol_geom                                !> CWIPI's geometric tolerence
-        double precision, dimension(:), allocatable :: cwp_coords   !> CWIPI's coordinates table
+        double precision, dimension(:), allocatable :: cwp_coords   !> CWIPI's coordinates table
         integer, dimension(:), allocatable :: cwp_connecindex       !> CWIPI's connectivity indexes tables
         integer, dimension(:), allocatable :: cwp_connec            !> CWIPI's connectivity table
         integer :: cwp_nlocpoints                                   !> CWIPI's number of located points

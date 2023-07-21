@@ -326,14 +326,14 @@ class Output:
     #         self.log_hl1(f"Fields saved in {self.output.fields_dir}, Visualization: {self.output.fields_dir}/phydll_dl_fields.xmf", dblv=3)
 
 
-    def save_fields(self, phy_fields, dl_fields, mesh, phy_nfields, dl_nfields, cpl_ite):
+    def save_fields(self, phy_fields, dl_fields, mesh, phy_nfields, dl_nfields, cpl_ite, phy_rank_to_excl):
         """"
         Save local mesh and exchanged fields
         """
         self.log_hl2("Save fields ...", dblv=3)
         self.save_hdf5_files(phy_fields, dl_fields, mesh, phy_nfields, dl_nfields, cpl_ite)
         self.write_xdmf_files(mesh, phy_nfields, dl_nfields, cpl_ite)
-        self.write_xdmf_collec_file(cpl_ite)
+        self.write_xdmf_collec_file(cpl_ite, phy_rank_to_excl)
 
 
     def save_hdf5_files(self, phy_fields, dl_fields, mesh, phy_nfields, dl_nfields, cpl_ite):
@@ -423,13 +423,13 @@ class Output:
             file.write(xdmf)
 
 
-    def write_xdmf_collec_file(self, cpl_ite):
+    def write_xdmf_collec_file(self, cpl_ite, phy_rank_to_excl):
         """
         Write xdmf collection file (DL)
         """
         if self.mpienv.is_commhrank:
-            # DL XDMF COLLEC
-            fields_file = f"{self.fields_dir}/phydll_dl_fields.xmf"
+            # DL XDMF COLLEC
+            fields_file = f"{self.fields_dir}/phydll_dl.xmf"
             self.xdmf_collec = self.xdmf_collec[:-38] + f"""
             <Grid Name="./phydll_dl_fields_{cpl_ite}" GridType="Collection" CollectionType="Spatial">"""
             for i in range(self.mpienv.comm_size):
@@ -444,13 +444,14 @@ class Output:
             with open(fields_file, "w") as file:
                 file.write(self.xdmf_collec)
 
-            # PHY XDMF COLLEC
-            fields_file = f"{self.fields_dir}/phydll_phy_fields.xmf"
+            # PHY XDMF COLLEC
+            fields_file = f"{self.fields_dir}/phydll_phy.xmf"
             self.xdmf_collec_phy = self.xdmf_collec_phy[:-38] + f"""
             <Grid Name="./phydll_phy_fields_{cpl_ite}" GridType="Collection" CollectionType="Spatial">"""
             for i in range(self.mpienv.dsize):
-                self.xdmf_collec_phy += f"""
-                <xi:include href="./FILES/fields_phy_{cpl_ite}_{i}-{self.mpienv.dsize-1}.xmf" xpointer="xpointer(//Xdmf/Domain/Grid)"/>"""
+                if i not in phy_rank_to_excl:
+                    self.xdmf_collec_phy += f"""
+                    <xi:include href="./FILES/fields_phy_{cpl_ite}_{i}-{self.mpienv.dsize-1}.xmf" xpointer="xpointer(//Xdmf/Domain/Grid)"/>"""
             self.xdmf_collec_phy += """
             </Grid>"""
             self.xdmf_collec_phy += """

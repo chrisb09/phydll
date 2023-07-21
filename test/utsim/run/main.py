@@ -20,6 +20,9 @@ def main():
                     phy_nfields=1,
                     dl_nfields=1)
 
+    static_field_1 = phydll.receive_static_field()
+    static_field_2 = phydll.receive_static_field()
+
     while phydll.fsignal:
         phy_fields = phydll.receive_phy_fields()
         dl_fields = -1./(1 + phy_fields)

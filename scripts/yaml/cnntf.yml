@@ -1,7 +1,6 @@
 # Deep learning model parameters
 Model :
   modelfile : "./NN_MODELS/model_R2_tf2.h5"     # (mandatory) Model file path
-  fill_obs : False                              # (optional, default=False) Fill obstacles
 
   # CNN parameters
   CNN_params :

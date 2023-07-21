@@ -124,13 +124,13 @@ def extra_commands(file, cmds):
     Write extra commands
     """
     with open(file, "a") as f:
-        f.write("# EXTRA COMMANDS ########\n")
         if cmds is None:
             f.write("\n")
         else:
+            f.write("# EXTRA COMMANDS ########\n")
             for cmd in cmds:
                 f.write(f"{cmd}\n")
-        f.write(f"{25*'#'}\n\n")
+            f.write(f"{25*'#'}\n\n")
 
 def append_python_path(file, pypath):
     """

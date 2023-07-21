@@ -28,7 +28,7 @@ class CWIPI:
         dl_fields               (np.array)  DL fields sent to Physical solver
         located_points          (np.array)  List of indexes of located points
         not_located_points      (np.arary)  List of indexes of not located points
-        coords                  (np.array)  CWIPI mesh coordinates (it should not be desallocated)
+        coords                  (np.array)  CWIPI mesh coordinates (it should not be desallocated)
         phy_fields_msize        (float)     Memory size of Physical solver fields
         dl_fields_msize         (float)     Memory size of DL fields
         phy_nfields             (int)       Number of received fields (Physical solver fields)
@@ -409,3 +409,43 @@ class CWIPI:
             handled_array[index::self.phy_nfields][self.located_points-1] = array[:self.n_located_points]
 
         return handled_array
+
+
+    def receive_static(self):
+        """
+        Reception of static Physical field
+
+        Returns:
+            static_field (np.array)  Static Physical solver field of shape: (1, mesh.nvertex)
+        """
+        tic = self.mpienv.MPI.Wtime()
+
+        exchname = b'phydll__static_field'
+        tag = 7
+        time_step_visu = 0
+        time_val_visu = 0.
+        stride = 1
+        recvfieldsname = "static_field"
+        static_field_noth = np.zeros(self.mesh.nvertex, dtype="float64")
+        request = self.cwp_coupling.irecv(exchname, tag, stride,
+                                            time_step_visu, time_val_visu,
+                                            recvfieldsname, static_field_noth)
+
+        toc = self.mpienv.MPI.Wtime()
+        # self.output.timers = toc - tic
+
+        self.cwp_coupling.wait_irecv(request)
+        toc = self.mpienv.MPI.Wtime()
+        # self.output.timers. = toc - tic
+
+        tic = self.mpienv.MPI.Wtime()
+        if self.n_not_located_points > 0:
+            static_field = 0 * np.ones_like(static_field_noth)
+            static_field[self.located_points-1] = static_field_noth[:self.n_located_points]
+        static_field_noth = static_field_noth.reshape((1,-1))
+       
+        toc = self.mpienv.MPI.Wtime()
+        # self.output.timers. = toc - tic
+        # self.output.timers.recv["full"] = sum(list(self.output.timers.recv.values())[:-1])
+
+        return static_field_noth

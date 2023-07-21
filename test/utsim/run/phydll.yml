@@ -1,0 +1,25 @@
+Output:
+  debug_level : 3
+
+Coupling:
+  coupling_frequency : 1
+  save_fields_frequency : 1
+
+  cwipi :
+    dl_val_not_located : [0.0]
+    phy_val_not_located : [1.0]
+
+DLmesh :
+  xmin : 0.0
+  ymin : 0.5
+  zmin : 0.0
+  dx : 2.0e-2
+  nx : 151
+  ny : 51
+  nz : 51
+
+  overlap :
+    overlap : True
+    x_n_elmts : 12
+    y_n_elmts : 10
+    z_n_elmts : 8

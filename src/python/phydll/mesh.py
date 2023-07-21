@@ -242,6 +242,11 @@ class PhyMesh:
         self.connec_r = self.connec.reshape((self.nelmt, self.nmeshv))
         self.connecindex = np.array([i*self.nmeshv for i in np.arange(self.nelmt+1)], dtype="int32")
 
+        save_excl_rank = np.array(self.corresp_phy_ranks)[np.array(self.nnodes_list, dtype="i") == 0]
+        self.save_excl_rank = self.mpienv.comm.gather(save_excl_rank, root=self.mpienv.comm_hrank)
+        if self.mpienv.is_commhrank:
+            self.save_excl_rank = [i for elm in [elm.tolist() for elm in self.save_excl_rank] for i in elm]
+
         toc = self.mpienv.MPI.Wtime()
         self.output.log_hl2(timer=(toc-tic), dblv=dblv)
 
@@ -256,6 +261,9 @@ class PhyMesh:
         elif self.nmeshv == 8: self.topo_type = "Hexahedron"
         self.output.log_hl2(f"Element topology = {self.topo_type}\n", dblv)
 
+        message = f"Phy rank to exclude : {self.save_excl_rank}"
+        self.output.log_hl2(message, dblv)
+        
         message = f"{'MPI_rank':<12} {'nvertex':<15} {'connecsize':<20} {'(glcomm) dlrank: corresp. Phy rank':35}"
         self.output.log_hl2(message, dblv)
 
@@ -337,6 +345,9 @@ class VoxGrid:
         self.topo_type = "Hexahedron"
 
         # Overlap
+        self.nx_old = 0
+        self.ny_old = 0
+        self.nz_old = 0
         self.ol_x_n_elmts = 0
         self.ol_x_n_elmts_left = 0
         self.ol_x_n_elmts_right = 0
@@ -390,6 +401,9 @@ class VoxGrid:
         self.output.timers.create_mesh += toc - tic
         self.output.log_hl1(timer=(toc-tic), dblv=dblv)
 
+        self.nx_old = self.nx
+        self.ny_old = self.ny
+        self.nz_old = self.nz
         if self.with_overlap:
             self.output.log_hl1("Create overlap setting ...", dblv)
             tic = self.mpienv.MPI.Wtime()
@@ -397,6 +411,10 @@ class VoxGrid:
             toc = self.mpienv.MPI.Wtime()
             self.output.timers.create_mesh += toc - tic
             self.output.log_hl1(timer=(toc-tic), dblv=dblv)
+
+            self.nx += self.ol_x_n_elmts_left + self.ol_x_n_elmts_right
+            self.ny += self.ol_y_n_elmts_down + self.ol_y_n_elmts_up
+            self.ny += self.ol_z_n_elmts_back + self.ol_z_n_elmts_front
 
 
     def _get_voxgrid_bound(self):
@@ -551,9 +569,9 @@ class VoxGrid:
         if not self.with_overlap:
             return array
 
-        nx = self.nx
-        ny = self.ny
-        nz = self.nz
+        nx = self.nx_old
+        ny = self.ny_old
+        nz = self.nz_old
 
         ol_l = self.ol_x_n_elmts_left
         ol_r = self.ol_x_n_elmts_right
@@ -934,10 +952,26 @@ class VoxGrid:
             return array
 
         return  array[
-                    self.ol_x_n_elmts_left: self.nx+self.ol_x_n_elmts_left,
-                    self.ol_y_n_elmts_down: self.ny+self.ol_y_n_elmts_down,
-                    self.ol_z_n_elmts_back: self.nz+self.ol_z_n_elmts_back
+                    self.ol_x_n_elmts_left: self.nx_old + self.ol_x_n_elmts_left,
+                    self.ol_y_n_elmts_down: self.ny_old + self.ol_y_n_elmts_down,
+                    self.ol_z_n_elmts_back: self.nz_old + self.ol_z_n_elmts_back
                     ]
+
+
+    def to_structured(self, array):
+        """
+        > Turn unstructured (nx*ny*nz) array to structured array (nx, ny, nz)
+        > Create field with overlap
+        """
+        return self.create_fields_with_overlap(array.reshape((self.nx_old, self.ny_old, self.nz_old), order='F'))
+
+        
+    def to_unstructured(self, array):
+        """
+        > Remove overlap
+        > Turn structured (nx, ny, nz) array to unstructured array (nx*ny*nz)
+        """
+        return self.get_fields_without_overlap(array).reshape((1, self.nx_old * self.ny_old * self.nz_old), order='F')
 
 
     @staticmethod

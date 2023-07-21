@@ -32,7 +32,7 @@ module mod_phydll
             procedure :: create_cwp_cpl                         !< Create CWIPI coupling (for InterpolationScheme)
 
             procedure :: set_phy_mesh                           !< Set Physical mesh in PhyDLL
-            procedure :: send_phy_mesh                          !< Send Physical mesh to DL engine
+            procedure :: send_phy_mesh                          !< Send Physical mesh to DL engine
             procedure :: set_mesh_for_interpscheme              !< Set mesh for InterpolationScheme
             procedure :: define_locate_mesh_for_interpscheme    !< Define and locate mesh for InterpolationScheme
 
@@ -48,12 +48,15 @@ module mod_phydll
             procedure :: directscheme_nb_recv_dl_fields         !< DirectScheme: non-blocking (nb) receive of DL fields
             procedure :: directscheme_wait_anb_send             !< DirectScheme: wait for requests of anb send of Physical fields
             procedure :: directscheme_wait_nb_recv              !< DirectScheme: wait for requests of nb receive of DL fields
+            procedure :: directscheme_send_static_field         !< DirectScheme: send static field (for pre-processing)
 
             procedure :: interpscheme_anb_send_phy_fields       !< InterpolationScheme: interpolation + asynchronous non-blocking (anb) send of Physical fields
             procedure :: interpscheme_nb_recv_dl_fields         !< InterpolationScheme: non-blocking (nb) receive of DL fields
             procedure :: interpscheme_wait_anb_send             !< InterpolationScheme: wait for requests of anb send of Physical fields
             procedure :: interpscheme_wait_nb_recv              !< InterpolationScheme: wait for requests of nb receive of DL fields
             procedure :: interpscheme_handle_notlocpoints       !< InterpolationScheme: handle not located points (by setting default values)
+            procedure :: interpscheme_send_static_field         !< InterpolationScheme: send static field (for pre-processing)
+
     end type
 
     contains
@@ -74,7 +77,7 @@ module mod_phydll
     !*********************************************************************
         implicit none
 
-        ! in/out
+        ! in/out
         class(phydll_t), intent(inout), target :: self
         integer, intent(out) :: glcomm
         integer, intent(out) :: comm
@@ -95,7 +98,7 @@ module mod_phydll
         self%mesh = mesh_t()
         self%io%mesh => self%mesh
 
-        ! Global communicator
+        ! Global communicator
         self%env%glcomm = mpi_comm_world
         call mpi_comm_size(self%env%glcomm, self%env%glcomm_size, ierror)
         call mpi_comm_rank(self%env%glcomm, self%env%glcomm_rank, ierror)
@@ -118,7 +121,7 @@ module mod_phydll
         call self%check_mpmd(status, returned)
         if (returned) return
 
-        ! Print PhyDLL
+        ! Print PhyDLL
         call self%io%log_msg(repeat("*", 87), 0)
         call self%io%log_msg(repeat("*", 30) // " <<< Welcome to PhyDLL >>> " // repeat("*", 30), 0)
         call self%io%log_msg(repeat("*", 87), 0)
@@ -126,7 +129,7 @@ module mod_phydll
         ! Recv coupling paramters from Python
         call self%recv_cpl_params()
 
-        ! Initialize cwipi interface
+        ! Initialize cwipi interface
         if (self%cpl%is_interpolationscheme) then
             call self%init_cwp_interf()
         end if
@@ -143,7 +146,7 @@ module mod_phydll
     !*********************************************************************
         implicit none
 
-        ! in/out
+        ! in/out
         class(phydll_t), intent(inout) :: self
         integer, intent(out) :: status
         logical, intent(out) :: returned
@@ -249,7 +252,7 @@ module mod_phydll
         character(len=ll) :: msg
         integer :: ierror
 
-        ! Broadcasts
+        ! Broadcasts
         call mpi_bcast(self%cpl%tol_geom, 1, mpi_double_precision, self%env%distant_rank, self%env%glcomm, ierror)
         call mpi_bcast(self%cpl%app_name, 3, mpi_character, self%env%host_rank, self%env%glcomm, ierror)
         call mpi_bcast(self%cpl%distant_name, 2, mpi_character, self%env%distant_rank, self%env%glcomm, ierror)
@@ -479,7 +482,7 @@ module mod_phydll
         call cwipi_define_mesh_f(self%cpl%code_name, self%mesh%nnode, self%mesh%ncell, &
                                 self%cpl%cwp_coords, self%cpl%cwp_connecindex, self%cpl%cwp_connec)
 
-        ! Localization
+        ! Localization
         write(location_file, "(a, i0, a1, i0)") "./phydll_cwp_locfile-", self%env%comm_size, "-", self%env%distant_size
         inquire(file=location_file, exist=exists)
         if (exists) then
@@ -525,7 +528,7 @@ module mod_phydll
     subroutine map_directscheme_processes(self)
     !*********************************************************************
     !> Map processes of dMPI coupling
-    !> Send field size to Python (for NC coupling)
+    !> Send field size to Python (for NC coupling)
     !
     ! Args:
     !   [inout] self    PhyDLL object
@@ -540,6 +543,24 @@ module mod_phydll
         integer :: av_t_py_r
         integer :: ierror
 
+        ! @dev
+        integer, dimension(self%env%comm_size) :: nnode_list
+        integer :: nnode_aver
+        integer, dimension(self%env%comm_size, self%env%distant_size) :: pydest_list 
+        integer :: i
+
+        ! @dbg 
+        character(len=ll) :: msg
+
+        ! call mpi_allgether(self%nnode, 1, MPI_INTEGER, nnode_list, 1, MPI_INTEGER, self%env%comm, ierror)
+        ! call mpi_allreduce(self%nnode, 1, MPI_INTEGER, nnode_aver, 1, MPI_INTEGER, MPI_SUM, self%env%comm, ierror)
+        ! nnode_aver = nnode_aver / self%env%distant_size
+        
+        ! pydest_list = MPI_PROC_NULL
+        ! do i = 1, self%env%comm_size
+        !     if (i == 1)
+        !     nnode_list(i) = 
+
         ! Map processes
         av_t_py_q = self%env%comm_size / self%env%distant_size
         av_t_py_r = MODULO(self%env%comm_size, self%env%distant_size)
@@ -549,6 +570,9 @@ module mod_phydll
         else
           self%env%pydest = self%env%comm_size + (self%env%comm_rank - av_t_py_r) / av_t_py_q
         end if
+
+        ! write(msg, "('pydest (glrank): ', i0, ' (', i0, ')')") self%env%pydest-self%env%comm_size, self%env%pydest
+        ! call self%io%log_db(msg, allmpi=.true.)
 
         ! Send field size (NC)
         if (trim(self%cpl%dl_mesh_type) == "NC") then
@@ -583,7 +607,7 @@ module mod_phydll
         integer, dimension(mpi_status_size, cm_n) :: statuses
         integer :: ierror
 
-        ! Map processes
+        ! Map processes
         call self%map_directscheme_processes()
 
         ! Geometric dimension
@@ -639,7 +663,7 @@ module mod_phydll
         allocate(self%cpl%phy_fields%index(self%cpl%phy_fields%count))
         self%cpl%phy_fields%index = iinit
 
-        ! Allocate DL fields
+        ! Allocate DL fields
         allocate(self%cpl%dl_fields%array(self%mesh%nnode * self%cpl%dl_fields%count))
         self%cpl%dl_fields%array = dbinit
         allocate(self%cpl%dl_fields%label(self%cpl%dl_fields%count))
@@ -647,7 +671,7 @@ module mod_phydll
         allocate(self%cpl%dl_fields%index(self%cpl%dl_fields%count))
         self%cpl%dl_fields%index = iinit
 
-        ! Initialize counter
+        ! Initialize counter
         self%cpl%dl_fields%ic = self%cpl%dl_fields%count
 
         ! Allocate requests and statuses for separate communications
@@ -758,7 +782,7 @@ module mod_phydll
         ! local
         integer :: ierror
 
-        ! Broadcast iteration
+        ! Broadcast iteration
         self%cpl%bsignal = .true.
         call mpi_bcast(self%cpl%phy_ite, 1, mpi_integer, self%env%host_rank, self%env%glcomm, ierror)
     end subroutine
@@ -770,13 +794,13 @@ module mod_phydll
     !   > Asychronous non-blocking send of Physical fields to DL engine
     !   > @wip separate anb send of Physical fields to DL engine
     !
-    ! Args:
+    ! Args:
     !   [inout] self    PhyDLL object
     !   [in]    index   @wip index for separate communications (default=-1)
     !*********************************************************************
         implicit none
 
-        ! in/out
+        ! in/out
         class(phydll_t), intent(inout) :: self
         integer, optional, intent(in) :: index
 
@@ -797,7 +821,7 @@ module mod_phydll
             count = self%mesh%nnode
             call mpi_issend(buf, count, mpi_double_precision, self%env%pydest, tag, self%env%glcomm, self%env%sep_requests(idx), ierror)
 
-        ! Compact asynchronous non-blocking send of Physical solver fields
+        ! Compact asynchronous non-blocking send of Physical solver fields
         else if (idx == -1) then
             count = self%mesh%nnode * self%cpl%phy_fields%count
             call mpi_issend(self%cpl%phy_fields%array, count, mpi_double_precision, self%env%pydest, tag, self%env%glcomm, self%env%requests(1), ierror)
@@ -812,13 +836,13 @@ module mod_phydll
     !   > Non-blocking receive of DL fields from DL engine
     !   > @wip separate nb receive of DL fields from DL engine
     !
-    ! Args:
+    ! Args:
     !   [inout] self    PhyDLL object
     !   [in]    index   @wip index for separate communications (default=-1)
     !*********************************************************************
         implicit none
 
-        ! in/out
+        ! in/out
         class(phydll_t), intent(inout) :: self
         integer, optional, intent(in) :: index
 
@@ -833,7 +857,7 @@ module mod_phydll
 
         tag = 7111
 
-        ! @wip Separate receive
+        ! @wip Separate receive
         if (idx > 0) then
             count = self%mesh%nnode
             buf(1+(idx-1)*count : idx*count) = dbinit
@@ -854,7 +878,7 @@ module mod_phydll
     !   > Wait for requests of anb send of Physical fields to DL engine
     !   > @wip separate wait
     !
-    ! Args:
+    ! Args:
     !   [inout] self    PhyDLL object
     !   [in]    index   @wip index for separate communications (default=-1)
     !*********************************************************************
@@ -888,7 +912,7 @@ module mod_phydll
     !   > Wait for requests of nb receive of DL fields from DL engine
     !   > @wip separate wait
     !
-    ! Args:
+    ! Args:
     !   [inout] self    PhyDLL object
     !   [in]    index   @wip index for separate communications (default=-1)
     !*********************************************************************
@@ -916,13 +940,40 @@ module mod_phydll
     end subroutine
 
 
+    subroutine directscheme_send_static_field(self, field, label)
+    !*********************************************************************
+    ! DirectScheme:
+    !   > Send static field
+    !
+    ! Args:
+    !   [inout] self    PhyDLL object
+    !*********************************************************************
+        implicit none
+
+        ! in/out
+        class(phydll_t), intent(inout) :: self
+        double precision, dimension(:), intent(in) :: field
+        character(len=*), optional, intent(inout) :: label
+
+        ! local
+        integer :: tag
+        integer :: count
+        integer :: ierror
+
+        label = ""
+        tag = 7
+        count = self%mesh%nnode           
+        call mpi_send(field, count, mpi_double_precision, self%env%pydest, tag, self%env%glcomm, ierror)
+    end subroutine
+
+
     subroutine interpscheme_anb_send_phy_fields(self, index)
     !*********************************************************************
     ! InterpolationScheme: (CWIPI)
     !   > Interpolation + asychronous non-blocking send of Physical fields to DL engine
     !   > @wip separate interp + anb send of Physical fields to DL engine
     !
-    ! Args:
+    ! Args:
     !   [inout] self    PhyDLL object
     !   [in]    index   @wip index for separate communications (default=-1)
     !*********************************************************************
@@ -954,7 +1005,7 @@ module mod_phydll
         exchname = "phydll_s_phy"
         tag = 1777
 
-        ! @wip Separate interp + issend (cwipi)
+        ! @wip Separate interp + issend (cwipi)
         if (idx > 0) then
             write(sendfieldname, "('phy_fields_', a)") trim(self%cpl%phy_fields%label(idx))
             stride = 1
@@ -965,7 +1016,7 @@ module mod_phydll
                                 trim(sendfieldname), buf, self%env%sep_requests(idx))
 #endif
 
-        ! Compact intepr + issend (cwipi)
+        ! Compact intepr + issend (cwipi)
         else if (idx == -1) then
             sendfieldname = "phy_fields"
             stride = self%cpl%phy_fields%count
@@ -985,7 +1036,7 @@ module mod_phydll
     !   > Non-blocking receive of DL fields from DL engine
     !   > @wip separate nb receive of DL fields from DL engine
     !
-    ! Args:
+    ! Args:
     !   [inout] self    PhyDLL object
     !   [in]    index   @wip index for separate communications (default=-1)
     !*********************************************************************
@@ -1032,7 +1083,7 @@ module mod_phydll
     !   > Wait for requests of anb send of Physical fields to DL engine
     !   > @wip separate wait
     !
-    ! Args:
+    ! Args:
     !   [inout] self    PhyDLL object
     !   [in]    index   @wip index for separate communications (default=-1)
     !*********************************************************************
@@ -1054,7 +1105,7 @@ module mod_phydll
         self%cpl%code_name = self%cpl%code_name
 
 #ifdef CWIPI
-        ! Wait of send
+        ! Wait of send
         if (idx > 0) then
             call cwipi_wait_issend_f(self%cpl%code_name, self%env%sep_requests(idx))
         else
@@ -1070,7 +1121,7 @@ module mod_phydll
     !   > Wait for requests of nb receive of DL fields from DL engine
     !   > @wip separate wait
     !
-    ! Args:
+    ! Args:
     !   [inout] self    PhyDLL object
     !   [in]    index   @wip index for separate communications (default=-1)
     !*********************************************************************
@@ -1091,7 +1142,7 @@ module mod_phydll
         ! @dbg (to avoid W unused dummy argument)
         self%cpl%code_name = self%cpl%code_name
 
-        ! Wait of recv
+        ! Wait of recv
 #ifdef CWIPI
         call cwipi_wait_irecv_f(self%cpl%code_name, self%env%requests(2))
 #endif
@@ -1116,7 +1167,7 @@ module mod_phydll
         double precision, dimension(self%mesh%nnode) :: array_2
         integer :: i
 
-        ! Handle not-located points
+        ! Handle not-located points
         if (self%cpl%cwp_nnotlocpoints > 0) then
           do i = 1, self%cpl%dl_fields%count
             array_1(:) = self%cpl%cwp_not_loc_pts_default_vals(i)
@@ -1128,6 +1179,46 @@ module mod_phydll
     end subroutine
 
 
+    subroutine interpscheme_send_static_field(self, field, label)
+    !*********************************************************************
+    ! Interpolation Scheme:
+    !   > Send static field
+    !
+    ! Args:
+    !   [inout] self    PhyDLL object
+    !*********************************************************************
+#ifdef CWIPI
+        use cwipi, only: cwipi_issend_f, cwipi_wait_issend_f
+#endif
+        implicit none
+
+        ! in/out
+        class(phydll_t), intent(inout) :: self
+        double precision, dimension(:), intent(in) :: field
+        character(len=*), intent(in) :: label
+
+        ! local
+        character(len=ml) :: exchname
+        integer :: tag
+        integer :: stride
+        integer :: time_step_visu
+        double precision :: time_val_visu
+        integer :: request
+
+        exchname = "phydll_s_static_field"
+        tag = 7
+        stride = 1
+        time_step_visu = 0 
+        time_val_visu = 0.
+#ifdef CWIPI
+        call cwipi_issend_f(self%cpl%code_name, trim(exchname), tag, &
+                            stride, time_step_visu, time_val_visu, &
+                            trim(label), field, request)
+        call cwipi_wait_issend_f(self%cpl%code_name, request)
+#endif
+    end subroutine
+
+    
     subroutine finalize(self)
     !*********************************************************************
     ! Finalize PhyDLL:
@@ -1150,13 +1241,13 @@ module mod_phydll
         integer :: sig
         integer :: ierror
 
-        ! Send signal
+        ! Send signal
         if (self%cpl%bsignal) then
             sig = -1
             call mpi_bcast(sig , 1, mpi_integer, self%env%host_rank, self%env%glcomm, ierror)
         end if
 
-        ! Deallocate fields
+        ! Deallocate fields
         deallocate(self%cpl%phy_fields%array)
         deallocate(self%cpl%phy_fields%label)
         deallocate(self%cpl%phy_fields%index)
@@ -1167,7 +1258,7 @@ module mod_phydll
         deallocate(self%env%sep_requests)
         deallocate(self%env%sep_statuses)
 
-        ! Deallocate mesh arrays
+        ! Deallocate mesh arrays
         if (trim(self%cpl%dl_mesh_type) /= "NC") then
             deallocate(self%mesh%node_coords)
             deallocate(self%mesh%element_to_node)

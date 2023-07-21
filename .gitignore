@@ -1,31 +1,16 @@
-build
-build_
-build_intel
-build_gnu
-build_nvhpc
+build*
 
 test/r1
 test/utsim/meshes
-test/utsim/run/OUTPUTED_MESH_PARTITIONS
-test/utsim/run/PhyDLL_MESH
-test/utsim/run/PhyDLL_FIELDS
-test/utsim/run/HASH_TABLES
-test/utsim/meshes/generator.sh
-test/utsim/meshes/*.xmf
-test/utsim/run/run.sh
-test/utsim/run/subfile.kraken
-test/utsim/run/rankfile_*
-test/utsim/run/slurm-*
-test/utsim/run/cwipi
-test/utsim/run/el2part_*
-test/utsim/run/partition*
-test/utsim/run/*log*
-test/utsim/run/meshfile.h5
-test/utsim/solver/solver.exe
-test/utsim/run/phydll_cwp_locfile*
-test/utsim/run/phydll.yml
-test/utsim/run/outerr*
-test/utsim/run/meshinfo
+
+test/utsim/solver/*
+!test/utsim/solver/main_solver.f90
+!test/utsim/solver/Makefile
+!test/utsim/solver/mod_solver.f90
+
+test/utsim/run/*
+!test/utsim/run/main.py
+!test/utsim/run/phydll.yml
 
 test/ds_nc/*
 !test/ds_nc/main.f90
@@ -35,11 +20,6 @@ test/ds_nc/*
 
 src/fortran/*.mod
 src/python/phydll/__pycache__
-src/python/phydll/nn/__pycache__
-src/python/phydll/nn/.vscode
 src/python/phydll/.vscode
-src/python/phydll.egg-info
-
-scripts/pymain/main.py
 
 .vscode

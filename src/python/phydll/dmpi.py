@@ -119,6 +119,7 @@ class dMPI:
         self.phy_task_per_dl = self.mesh.phy_task_per_dl
         self.corresp_phy_ranks = self.mesh.corresp_phy_ranks
         self.nnodes_list = self.mesh.nnodes_list
+        self.save_excl_rank = self.mesh.save_excl_rank
 
         self.phy_fields = np.zeros((self.phy_nfields, self.mesh.nvertex), dtype=np.float64)
         self.dl_fields = np.zeros(self.mesh.nvertex_dup * self.dl_nfields, dtype=np.float64)
@@ -189,7 +190,7 @@ class dMPI:
         return self.phy_fields
 
 
-    def _pp_phy_fields(self, array, index=-1):
+    def _pp_phy_fields(self, array, index=-1, static=False):
         """
         Post-process received data (Physical solver fields);
         Remove duplicated nodes;
@@ -198,6 +199,9 @@ class dMPI:
         Args:
             array   (np.array)  Array of shape: (phy_nfields * mesh.nvertex_dup,)
         """
+        if static:
+            return array[self.mesh.idx_unique] if self.mesh_type == "phymesh" else array
+
         if index == -1:
             for i in range(self.phy_nfields):
                 if self.mesh_type == "NC":
@@ -212,8 +216,8 @@ class dMPI:
 
             elif self.mesh_type == "phymesh":
                 self.phy_fields[index, :] = array[self.mesh.idx_unique]
-
-
+        
+        
     def _pp_dl_fields(self, array):
         """
         Pre-process sent data (DL fields);
@@ -283,6 +287,51 @@ class dMPI:
             if (self.cpl_ite - 1 + self.save_fields_frequency) % self.save_fields_frequency == 0 and index in (-1, self.phy_nfields - 1):
                 self.output.save_fields(phy_fields=self.phy_fields, dl_fields=dl_fields,
                                         mesh=self.mesh, phy_nfields=self.phy_nfields,
-                                        dl_nfields=self.dl_nfields, cpl_ite=self.cpl_ite)
+                                        dl_nfields=self.dl_nfields, cpl_ite=self.cpl_ite,
+                                        phy_rank_to_excl=self.save_excl_rank)
 
         self.output.timers.send["full"] = sum(list(self.output.timers.send.values())[:-1])
+
+
+    def receive_static(self):
+        """
+        Reception of static Physical fields
+        Reshape and remove duplicated nodes
+
+        Returns:
+            static_field    (np.array)  Static Physical field of shape: (1, mesh.nvertex)
+        """
+        tic = self.mpienv.MPI.Wtime()
+
+        static_field_dup = np.zeros(sum(self.nnodes_list), dtype="float64")
+
+        requests = []
+        for phyrank in self.corresp_phy_ranks:
+            j = phyrank % self.phy_task_per_dl
+
+            tag = 7
+            dtype = self.mpienv.MPI.DOUBLE
+
+            ind = sum(self.nnodes_list[:j])
+            count = self.nnodes_list[j] 
+
+            request = self.mpienv.glcomm.Irecv( buf=[static_field_dup[ind:ind+count], count, dtype],
+                                                source=phyrank, tag=tag)
+            requests.append(request)
+
+        toc = self.mpienv.MPI.Wtime()
+        # self.output.timers.
+
+        tic = self.mpienv.MPI.Wtime()
+        self.mpienv.MPI.Request.Waitall(requests)
+        toc = self.mpienv.MPI.Wtime()
+        # self.output.timers
+
+        tic = self.mpienv.MPI.Wtime()
+        static_field = self._pp_phy_fields(static_field_dup, static=True)
+        toc = self.mpienv.MPI.Wtime()
+        # self.output.timers = toc - tic
+
+        # self.output.timers = sum(list(self.output.timers.recv.values())[:-1])
+
+        return static_field

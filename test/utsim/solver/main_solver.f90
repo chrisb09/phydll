@@ -11,9 +11,9 @@ program main_solver
 
     ! Import PhyDLL API
 #ifdef PHYDLL
-    use phydll,     only: phydll_init, phydll_finalize, phydll_define, phydll_set_phy_field, &
+    use phydll,     only:   phydll_init, phydll_finalize, phydll_define, phydll_set_phy_field, &
                             phydll_send_phy_fields, phydll_recv_dl_fields, phydll_apply_dl_field, &
-                            phydll_what_is_dlmesh
+                            phydll_what_is_dlmesh, phydll_send_static_field
 #endif
 
     implicit none
@@ -28,9 +28,12 @@ program main_solver
 
     ! Local: Solver
     double precision, dimension(:), allocatable :: phy_field, dl_field
-    integer :: niter = 5
+    integer, parameter :: siter = 1
+    integer, parameter :: niter = 1
     integer :: i, j
     double precision :: ampl, sigx, sigy
+    character(len=256) :: label
+ 
     ! Initialize simulation
     call solver%initialize()
 
@@ -57,6 +60,14 @@ program main_solver
 
         else if (context_type == 1) then
             ! Context: Physical-mesh based coupling
+
+            ! if (solver%comm_rank == 0 .or. solver%comm_rank == 1 .or. solver%comm_rank == 5) then
+            !     solver%ncell = 0
+            !     solver%nnode = 0
+            !     solver%ntcell = 0
+            !     solver%ntnode = 0
+            ! end if
+
             call phydll_define( dim=solver%dim, &
                                 ncell=solver%ncell, &
                                 nnode=solver%nnode, &
@@ -83,11 +94,17 @@ program main_solver
         allocate(phy_field(solver%nnode))
         allocate(dl_field(solver%nnode))
 
-        ! Necessary barrier
-        call mpi_barrier(glcomm, i)
+        phy_field = 11000 + solver%comm_rank
+        label = "static_(11)_field"
+        call phydll_send_static_field(field=phy_field, label=trim(label))
+
+        phy_field = - (9000 + solver%comm_rank)
+        label = "static_(-9)_field"
+        call phydll_send_static_field(field=phy_field, label=trim(label))
+
 
         ! Temporal loop
-        do i = 1, niter
+        do i = siter, (siter - 1) + niter
             ampl = 10.
             sigx = 2./3
             sigy = 1./2
@@ -102,7 +119,6 @@ program main_solver
             call phydll_recv_dl_fields()
             call phydll_apply_dl_field(field=dl_field, label="mydlfield", index=1)
         end do
-
 
         ! Deallocate
         deallocate(phy_field)

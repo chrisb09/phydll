@@ -87,7 +87,7 @@ module phydll
         ! Map processess
         call ph%map_directscheme_processes()
 
-        ! Allocate fields
+        ! Allocate fields
         call ph%allocate_fields()
     end subroutine
 
@@ -96,8 +96,8 @@ module phydll
         node_coords, element_to_node, local_node_to_global, local_element_to_global)
     !*********************************************************************
     !> Define mesh for context-aware coupling.
-    !> For dMPI coupling: send mesh informations to DL engine
-    !> For CWIPI coupling: Set and locate mesh.
+    !> For dMPI coupling: send mesh informations to DL engine
+    !> For CWIPI coupling: Set and locate mesh.
     !
     ! Args:
     !   [in][opt]   dim                     Geometrical dimension
@@ -146,6 +146,34 @@ module phydll
     end subroutine
 
 
+    subroutine phydll_send_static_field(field, label)
+        !*********************************************************************
+        !> Send static field
+        !
+        ! Args:
+        !   [in]    field   static field to send
+        !*********************************************************************
+            implicit none
+    
+            ! in/out
+            double precision, dimension(:), intent(in) :: field
+            character(len=*), intent(in) :: label
+    
+            ! local
+            character(len=ll) :: msg
+
+            if (ph%cpl%is_directscheme) then
+                call ph%directscheme_send_static_field(field)
+            
+            else if (ph%cpl%is_interpolationscheme) then
+                call ph%interpscheme_send_static_field(field, label)
+            end if
+
+            write(msg, "('(PhyDLL) -----> Static field sent: ', a)") trim(label)
+            call ph%io%log_msg(msg, 0)
+    end subroutine
+
+
     subroutine phydll_set_phy_field(field, label, index)
     !*********************************************************************
     !> Check if the current iteration corresponds to a coupling iteration
@@ -182,7 +210,7 @@ module phydll
             ph%cpl%phy_fields%ic = ph%cpl%phy_fields%ic + 1
 
             if (idx > ph%cpl%phy_fields%count .or. ph%cpl%phy_fields%ic > ph%cpl%phy_fields%count) then
-                write(msg, "('Count of Phy fields (idx=', i0, ') practically applied (=', I0, ') is different from that is declared (=', I0, ')' )") &
+                write(msg, "('Count of Phy fields (idx=', i0, ') practically applied (=', i0, ') is different from that is declared (=', i0, ')' )") &
                     idx, ph%cpl%phy_fields%ic, ph%cpl%phy_fields%count
                 call ph%io%log_err(msg)
             end if
@@ -303,7 +331,7 @@ module phydll
 #ifdef HDF5
             if (ph%cpl%out_freq > 0 .and. trim(ph%cpl%dl_mesh_type) == "phymesh" .and. ph%cpl%is_directscheme) then
                 if (mod(ph%cpl%ite - 1 + ph%cpl%out_freq, ph%cpl%out_freq) == 0) then
-                    call ph%io%save_exch_fields()
+                    if (ph%mesh%nnode > 0) call ph%io%save_exch_fields()
                     write(msg, "(a, a)") "(PhyDLL) -----> Exch fields saved in ", trim(ph%cpl%out_dir)
                     call ph%io%log_msg(msg, 2)
                 end if

@@ -39,7 +39,7 @@ ifdef HDF5_DIR
 	FLAGS += -I${HDF5_DIR}/include -L${HDF5_DIR}/lib -lhdf5_fortran -lhdf5 -lhdf5_hl -lhdf5hl_fortran
 endif
 
-all: echo0 clean compile pyinstall echo1
+all: echo0 clean compile install pyinstall echo1
 
 echo0:
 	@echo "-------------------------------------------------"
@@ -75,11 +75,28 @@ compile: $(SRCFILES)
 pyinstall:
 	@if [[ $(ENABLE_PYTHON) == "ON" ]]; then\
 		echo -e "\n          Install Python API of PhyDLL ...";\
+		cp ./setup.cfg ./setup.py $(BUILD);\
+		rm -rf $(BUILD)/src/python;\
+		mkdir -p $(BUILD)/src/python;\
+		cp -r ./src/python/phydll $(BUILD)/src/python/;\
+		cd $(BUILD);\
 		pip install -e .;\
+		cd -;\
 	fi
 
 echo1:
 	@echo -e "\n(PhyDLL) -----> DONE \n"
+
+install: 
+	@mkdir -p $(BUILD)/src/python/phydll/
+	@cp -r ./src/python/phydll/* $(BUILD)/src/python/phydll/;
+	@mkdir -p $(BUILD)/src
+	@cp -r ./src/fortran $(BUILD)/src
+	@cp -r ./scripts $(BUILD)
+	@echo -e "\n          PhyDLL additional scripts: $(BUILD)/scripts"
+	@mkdir -p $(BUILD)/test/utsim
+	@cp -r ./test/ds_nc $(BUILD)/test
+	@echo -e "          PhyDLL test directory: $(BUILD)/test"
 
 clean:
 	@rm -rf $(BUILD)

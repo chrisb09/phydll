@@ -215,8 +215,9 @@ class PhyDLL:
 
         if self.phy_ite in (0, 1):
             self.output.log_hl0("Temporal \n", dblv=0)
-            self.output.log_hl1(f"Coupling iteration = {self.cpl_ite} ...", dblv=1)
-            self.output.timers.temporal = self.mpienv.MPI.Wtime()
+
+        self.output.log_hl1(f"Coupling iteration = {self.cpl_ite} ...", dblv=1)
+        self.output.timers.temporal = self.mpienv.MPI.Wtime()
 
         self.output.log_hl2("Receive Physical solver fields ...", dblv=3)
         self.phy_fields = self.cplinterf.receive(phy_ite=self.phy_ite, cpl_ite=self.cpl_ite)
@@ -230,7 +231,7 @@ class PhyDLL:
         Args:
             dl_fields   (np.array) Deep learning fields
         """
-        self.output.log_hl2("Send DL fields ...", dblv=3)
+        self.output.log_hl2("Send DL fields ...", dblv=3)
 
         self.dl_fields = dl_fields
         self.cplinterf.send(self.dl_fields)
@@ -239,6 +240,16 @@ class PhyDLL:
         self.output.log_hl1(timer=self.output.timers.temporal_ite, dblv=1)
 
         self.output.timers.temporal_ite = 0.0
+
+
+    def receive_static_field(self):
+        """
+        Wrapper to receive Physical solver fields
+
+        Returns:
+            static_field    (np.array)  Static Physical field
+        """
+        return self.cplinterf.receive_static()
 
 
     def finalize(self):
