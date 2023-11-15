@@ -2,5 +2,5 @@
 
 The documentation is available in [phydll.readthedocs.io](https://phydll.readthedocs.io)
 
-![PhyDLL](docs/images/phydll_0.png)
+![PhyDLL](docs/images/phydll_1.png)
 

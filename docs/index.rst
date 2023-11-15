@@ -7,7 +7,7 @@ Welcome to PhyDLL!
 
 **PhyDLL** (fidɛl) (**Phy**\ sics **D**\ eep **L**\ earning coup\ **L**\ er) is an open-source library to couple massively parallel physical solvers to distributed deep learning inference.
 
-.. image:: images/phydll_0.png
+.. image:: images/phydll_1.png
   :width: 700
   :alt: PhyDLL
 

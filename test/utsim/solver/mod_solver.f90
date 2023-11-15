@@ -33,13 +33,13 @@ module mod_solver
         integer :: dim
         integer :: ncell
         integer :: nnode
-        integer :: nvertex
+        integer :: nvert
         integer :: ntcell
         integer :: ntnode
-        double precision, dimension(:), allocatable :: coords
-        integer, dimension(:), allocatable :: element_to_node
-        integer, dimension(:), allocatable :: local_node_to_global
-        integer, dimension(:), allocatable :: local_element_to_global
+        double precision, dimension(:), pointer :: coords
+        integer, dimension(:), pointer :: element_to_node
+        integer, dimension(:), pointer :: local_node_to_global
+        integer, dimension(:), pointer :: local_element_to_global
 
         contains
 
@@ -126,20 +126,20 @@ module mod_solver
         character(len=ll) :: datasetname
 
         integer :: global_connec_dim
-        integer, dimension(:), allocatable :: global_connec
+        integer, dimension(:), pointer :: global_connec
 
-        integer, dimension(:), allocatable :: recvcounts
-        integer, dimension(:), allocatable :: recvdispls
+        integer, dimension(:), pointer :: recvcounts
+        integer, dimension(:), pointer :: recvdispls
 
         integer :: el_2_part_dim
-        integer, dimension(:), allocatable :: el_2_part
-        integer, dimension(:), allocatable :: el_2_part_all
+        integer, dimension(:), pointer :: el_2_part
+        integer, dimension(:), pointer :: el_2_part_all
 
-        double precision, dimension(:), allocatable :: xglob
-        double precision, dimension(:), allocatable :: yglob
-        double precision, dimension(:), allocatable :: zglob
+        double precision, dimension(:), pointer :: xglob
+        double precision, dimension(:), pointer :: yglob
+        double precision, dimension(:), pointer :: zglob
 
-        integer, dimension(:), allocatable :: temp
+        integer, dimension(:), pointer :: temp
 
         integer(hid_t) :: hash_file, hash_grp
         character(len=ll) :: hash_tables
@@ -159,35 +159,35 @@ module mod_solver
         call self%read_h5_dataset(trim(filename), trim(groupname), trim(datasetname), global_connec_dim, array_int=global_connec)
         if (self%db_mesh_info) call self%log_array(name="global_connec", array=global_connec, blk=.true., wrk=self%wrkarr)
 
-        ! COMPUTE NVERTEXT & NCELL
+        ! COMPUTE nvertT & NCELL
         select case (trim(datasetname))
         case ("tri->node")
-            self%nvertex = 3
+            self%nvert = 3
             self%dim = 2
             self%topology_type = "Triangle"
 
         case ("qua->node")
-            self%nvertex = 4
+            self%nvert = 4
             self%dim = 2
             self%topology_type = "Quadrilateral"
 
         case ("tet->node")
-            self%nvertex = 4
+            self%nvert = 4
             self%dim = 3
             self%topology_type = "Tetrahedron"
 
         case ("hex->node")
-            self%nvertex = 8
+            self%nvert = 8
             self%dim = 3
             self%topology_type = "Hexahedron"
 
         case ("pri->node")
-            self%nvertex = 6
+            self%nvert = 6
             self%dim = 3
             self%topology_type = "Wedge"
 
         end select
-        self%ncell = global_connec_dim / self%nvertex
+        self%ncell = global_connec_dim / self%nvert
 
         ! READ EL_2_PART
         write(filename, "('el2part_', i0, '.h5')") self%comm_size
@@ -236,10 +236,10 @@ module mod_solver
         if (self%db_mesh_info) call self%log_array(name="local_element_to_global", array=self%local_element_to_global, blk=.true., wrk=self%wrkarr)
 
         ! COMPUTE ELEMENT_TO_NODE
-        write(message, "('COMPUTE (element_to_node) [loop range = ', i0, '] ...')") self%ncell*self%nvertex
+        write(message, "('COMPUTE (element_to_node) [loop range = ', i0, '] ...')") self%ncell*self%nvert
         if (self%db_mesh_info) call self%log(message); tic = mpi_wtime()
-        allocate(self%element_to_node(self%ncell*self%nvertex)); self%element_to_node = iinit
-        allocate(temp(self%ncell*self%nvertex)); temp = iinit ! @dbg self%ntnode
+        allocate(self%element_to_node(self%ncell*self%nvert)); self%element_to_node = iinit
+        allocate(temp(self%ncell*self%nvert)); temp = iinit ! @dbg self%ntnode
 
         write(hash_tables, "('./HASH_TABLES/file_', i0, '-', i0, '_', i0, '-', i0, '.h5')") self%comm_rank, self%comm_size, self%ntnode, self%ntcell
         inquire(file=hash_tables, exist=hash_exists)
@@ -253,9 +253,9 @@ module mod_solver
             self%element_to_node(1) = 1
             temp(1) = global_connec(1)
             k = 2
-            do i = 2, self%ncell*self%nvertex
-                call self%progress_bar(i, self%ncell*self%nvertex)
-                !write(message, "(t4, i0, '/', i0, ' [', f5.2, ' %] ...')") i, self%ncell*self%nvertex, dble(i)/dble(self%ncell*self%nvertex)*100; if (self%db_mesh_info) call self%log(message)
+            do i = 2, self%ncell*self%nvert
+                call self%progress_bar(i, self%ncell*self%nvert)
+                !write(message, "(t4, i0, '/', i0, ' [', f5.2, ' %] ...')") i, self%ncell*self%nvert, dble(i)/dble(self%ncell*self%nvert)*100; if (self%db_mesh_info) call self%log(message)
                 to_cycle = .false.
                 do j = 1, i-1
                     if (global_connec(i) == global_connec(j)) then
@@ -283,13 +283,13 @@ module mod_solver
 
 
         ! COMPUTE LOCAL_NODE_TO_GLOBAL
-        write(message, "('COMPUTE (local_node_to_global) [loop range = ', i0, '] ...')") self%ncell*self%nvertex
+        write(message, "('COMPUTE (local_node_to_global) [loop range = ', i0, '] ...')") self%ncell*self%nvert
         if (self%db_mesh_info) call self%log(message); tic = mpi_wtime()
         self%nnode = count(temp >= 1)
         allocate(self%local_node_to_global(self%nnode)); self%local_node_to_global = iinit
         j = 1
-        do i = 1, self%ncell*self%nvertex ! @dbg self%ntnode
-            call self%progress_bar(i, self%ncell*self%nvertex)
+        do i = 1, self%ncell*self%nvert ! @dbg self%ntnode
+            call self%progress_bar(i, self%ncell*self%nvert)
             if (temp(i) >= 1) then
                 self%local_node_to_global(j) = temp(i)
                 j = j + 1
@@ -315,7 +315,7 @@ module mod_solver
         ! PRINT MESH INFO
         write(message, "(a)") ""//new_line("a")
         write(message, "(a, 4x, 'ndim = ', i0, a)") trim(message), self%dim, " "//new_line("a")
-        write(message, "(a, 4x, 'nvertex = ', i0, a)") trim(message), self%nvertex, " "//new_line("a")
+        write(message, "(a, 4x, 'nvert = ', i0, a)") trim(message), self%nvert, " "//new_line("a")
         write(message, "(a, 4x, 'ncell = ', i0, a)") trim(message), self%ncell, " "//new_line("a")
         write(message, "(a, 4x, 'nnode = ', i0, a)") trim(message), self%nnode, " "//new_line("a")
         write(message, "(a, 4x, 'ntcell = ', i0, a)") trim(message), self%ntcell, " "//new_line("a")
@@ -351,7 +351,7 @@ module mod_solver
         call h5fcreate_f("./OUTPUTED_MESH_PARTITIONS/"//trim(self%outmeshfile), H5F_ACC_TRUNC_F, file, herr)
 
         call self%write_h5_dataset(file=file, datasetname="dim", buff=(/self%dim/))
-        call self%write_h5_dataset(file=file, datasetname="nvertex", buff=(/self%nvertex/))
+        call self%write_h5_dataset(file=file, datasetname="nvert", buff=(/self%nvert/))
         call self%write_h5_dataset(file=file, datasetname="ncell", buff=(/self%ncell/))
         call self%write_h5_dataset(file=file, datasetname="nnode", buff=(/self%nnode/))
         call self%write_h5_dataset(file=file, datasetname="ntcell", buff=(/self%ntcell/))
@@ -406,8 +406,8 @@ module mod_solver
 
                 write(1, "(t8, a, i0, a)") '<Grid Collection="MESH" Name="mesh_part_', self%comm_rank, '">'
                     write(1, "(t12, a, a, a, i0, a)") '<Topology Type="', trim(self%topology_type), '" NumberOfElements="', self%ncell, trim(worder)
-                        write(1, "(t16, a, i0, a)") '<DataItem ItemType="Function" Dimensions="', self%ncell*self%nvertex, '" Function="$0 - 1">'
-                            write(1, "(t20, a, i0, a)") '<DataItem Format="HDF" DataType="Int" Dimensions="', self%ncell*self%nvertex, '">'
+                        write(1, "(t16, a, i0, a)") '<DataItem ItemType="Function" Dimensions="', self%ncell*self%nvert, '" Function="$0 - 1">'
+                            write(1, "(t20, a, i0, a)") '<DataItem Format="HDF" DataType="Int" Dimensions="', self%ncell*self%nvert, '">'
                                 write(1, "(t24, a, a)") trim(self%outmeshfile), ':/element_to_node'
                             write(1, "(t20, a)") '</DataItem>'
                         write(1, "(t16, a)") '</DataItem>'
@@ -519,8 +519,8 @@ module mod_solver
         character(len=*), intent(in) :: groupname
         character(len=*), intent(in) :: datasetname
         integer, intent(out) :: array_dim
-        integer, dimension(:), allocatable, optional, intent(out) :: array_int
-        double precision, dimension(:), allocatable, optional, intent(out) :: array_real
+        integer, dimension(:), pointer, optional, intent(out) :: array_int
+        double precision, dimension(:), pointer, optional, intent(out) :: array_real
 
         integer :: herr
         integer(hid_t) :: file
@@ -529,7 +529,7 @@ module mod_solver
         integer(hid_t) :: dtype
         integer(hid_t) :: dspace
         integer :: ndims
-        integer(hsize_t), dimension(:), allocatable :: dims, maxdims
+        integer(hsize_t), dimension(:), pointer :: dims, maxdims
 
         character(len=ll) :: message
 

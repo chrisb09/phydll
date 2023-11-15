@@ -1,173 +1,204 @@
 
-# PhyDLL's installation
+# Install PhyDLL
 
-PhyDLL has two interfaces:
-+ Fortran interface for the Physical solver.
-+ Python interface for the DL engine.
+The core of PhyDLL is written in C and conforms to MPI standards for parallelization. In addition to the C interface, It has been extended to include interfaces in Fortran and Python.
 
 To install PhyDLL library, we proceed as follows:
-1. Download PhyDLL.
-2. Compile the Fortran sources.
-3. Instal the associated Python package
+- Download PhyDLL
+- Compile C core and install C interface
+- Install Fortran interface
+- Install Python interface
+- Compile with HDF5 support
 
-##### Download
+## Download
 ```bash
-git clone https://gitlab.com/cerfacs/phydll
+git clone https://gitlab.com/cerfacs/phydll -b release/0.2
 cd phydll
 ```
 
-## Fortran compilation
-#### 1. Compile
+## C core/interface
 <a name="phydll_compilation"></a>
 ```bash
-mkdir ../PHYDLL
-export FC=<MPI-Fortran compiler>   # eg. mpif90
-make FC=$FC BUILD=../PHYDLL
+export BUILD=<build directory>
+export CC=<MPI-C compiler>
+make CC=$CC BUILD=$BUILD
+make install
 ```
-where `$FC` is the MPI-Fortran compiler, it could be `mpifort` (*GNU*) or `mpiifort` (*Intel*). `BUILD=` is the installation directory.
+where
++ `CC` is the MPI-C compiler,
++ `BUILD` is the installation directory.
 
-#### 2. Compile with CWIPI support
-To install PhyDLL with CWIPI support, It should be installed before (*cf.* <a href="#cwipi_compilation">CWIPI installation</a>), and the variable `CWIPI_DIR` should be set as the installation directory of CWIPI.
+The installation creates library and header files, which are located respectively in `$BUILD/lib/libphydll.so` and `$BUILD/include/phydll.h`.
+
+###### Example
 ```bash
-export CWIPI_DIR=<CWIPI_INSTALLATION_DIRECTORY>
+# Create the installation directory
+mkdir ../PhyDLL
+export BUILD=$(realpath ../PhyDLL)
+
+# Load gcc/openmpi modules
+export CC=mpicc
+
+# Install the C core/interface
+make CC=$CC BUILD=$BUILD
+make install
 ```
-Once this environment variable is set, the compilation process (<a href="#phydll_compilation">1. Compile</a>) detects automatically CWIPI support.
 
+## Fortran interface
+To enable the creation of the Fortran interface, we add the option `ENABLE_FORTAN=ON` to the Make and set the MPI-Fortran compiler
+```bash
+export BUILD_DIRECTORY=<build directory>
+export CC=<MPI-C compiler>
 
-#### 3. Compile with HDF5 support
+export FC=<MPI-Fortran compiler>
+
+make CC=$CC FC=$FC BUILD=$BUILD ENABLE_FORTRAN=ON
+make ENABLE_FORTRAN=ON install
+```
+It generates the library and module files: `$BUILD/lib/phydll_f.so` and `$BUILD/include/phydll_f.mod`.
+
+## Python interface
+**Requirements:** `cython`, `mpi4py`, `numpy`.
+
+Note that `mpi4py` should be installed by using the same MPI compiler.
+```bash
+export BUILD_DIRECTORY=<build directory>
+export CC=<MPI-C compiler>
+
+make CC=$CC BUILD=$BUILD ENABLE_PYTHON=ON
+make ENABLE_PYTHON=ON install
+```
+
+## Annex: compile with HDF5 support
 In order to save exchanged fields during the coupling (for `DirectScheme` coupling), PhyDLL should be compiled with HDF5 support. To do so, an environment variable exports the installation directory of HDF5. Then PhyDLL’s compilation detects automatically the support.
 ```bash
 export HDF5_DIR=<HDF5_INSTALLATION_DIRECTORY>
 ```
 
-#### 4. Create the executable of Fortran solver
-To create the executable of the Fortran solver, it is relevant to export PhyDLL directory as an environment variable
-```bash
-export PHYDLL_DIR=$(realpath ../PhyDLL)
-```
-The following flags should be added to the compilation and linking steps.
-+ Compilation flags:
-```bash
--DPHYDLL -I${PHYDLL_DIR}/include
-```
-
-+ Linking flags:
-```bash
- -L${PHYDLL_DIR}/lib -Wl,-rpath=${PHYDLL_DIR}/lib -lphydll
-```
-
-+ If CWIPI support is enabled, we add to the linker
-```bash
--Wl,-rpath=${CWIPI_DIR}/lib
-```
-
-## Python installation
-**Requirements:** `mpi4py`, `numpy`, `pyhdf5`, `pyyaml`.
-
-Note that `mpi4py` should be installed by using the same MPI-Fortran compiler.
-```bash
-cd phydll               # (sources directory)
-pip install -U -e ./
-```
-- The Python interface could be installed from the `makefile` by adding `ENABLE_PYTHON=ON`:
-```bash
-make FC=$FC BUILD=../PHYDLL ENABLE_PYTHON=ON
-```
-- If CWIPI support is enabled, the Python API of CWIPI should be appended to `PYTHONPATH`
-```bash
-export PYTHONPATH=$CWIPI_DIR/lib/pythonX.X/site-packages:$PYTHONPATH
-```
-
-## Annex: CWIPI installation:
-<a name="cwipi_compilation"></a>
-CWIPI website: [https://w3.onera.fr/cwipi/](https://w3.onera.fr/cwipi/).
-+ Download CWIPI:
-We recommand the version: `0.12.0`
-```bash
-wget https://w3.onera.fr/cwipi/sites/w3.onera.fr.cwipi/files/u4/cwipi-0.12.0.tgz
-tar -zxvf cwipi-0.12.0.tgz
-mkdir CWIPI
-cd CWIPI
-```
-
-+ Set compilers:
-```bash
-export CC=<MPI-C compiler>         # eg. mpicc
-export CXX=<MPI-C++ compiler>      # eg. mpicxx
-export FC=<MPI-Fortran compiler>   # eg. mpif90
-```
-
-+ Set python variables
-```bash
-export PYINTERP=<Python interpreter> # eg. ~/env/bin/python
-export CYINTERP=<Cython interpreter> # eg. ~/env/bin/cython
-export PYLIB=<Python library file>   # eg. ~/env/lib/libpython.so
-```
-
-+ Compilation:
-```bash
-CC=$CC CXX=$CXX FC=$FC cmake -DCWP_ENABLE_PYTHON_BINDINGS=ON -DCWP_ENABLE_Fortran=ON \
--DCWP_BUILD_DOCUMENTATION=OFF -DPYTHON_EXECUTABLE=$PYINTERP -DCYTHON_EXECUTABLE=$CYINTERP \
--DPYTHON_LIBRARY=$PYLIB -DCMAKE_INSTALL_PREFIX=$PWD -DCMAKE_CWP_INSTALL_PYTHON_DIR=$PWD \
-../cwipi-0.12.0
-```
-
-```bash
-make
-```
-
-```bash
-make install
-```
-
-+ Export `CWIPI_DIR` as variable environment
-```bash
-export CWIPI_DIR=$PWD
-```
-
-## Example of installation of PhyDLL with CWIPI and HDF5 supports:
+## Example of installation of PhyDLL with Fortan and Python interfaces:
 The example below shows how to install PhyDLL with *GNU/OpenMPI* and *Python 3.9*. CWIPI and HDF5 are already installed and located in `CWIPI_DIR` and `HDF5_DIR` respectively.
-
-```bash
+```
 $ pwd
 /home/serhani/
 
 $ git clone https://gitlab.com/cerfacs/phydll
 $ cd phydll
-$ mkdir ../PHYDLL
+$ mkdir -p ../PHYDLL
+$ export BUILD=$(realpath ../PHYDLL)
 
-$ export CWIPI_DIR=/home/serhani/CWIPI
-$ export HDF5_DIR=/home/serhani/HDF5
+$ module load gcc/11.2.0 openmpi/4.1.1
+$ export CC=mpicc
+$ export FC=mpifort
 
-$ make FC=mpifort BUILD=../PHYDLL
+$ source /home/serhani/pyenvs/py39-mpi4py-cython/bin/activate
+
+$ make CC=$CC FC=$FC BUILD=../PHYDLL ENABLE_PYTHON=ON ENABLE_FORTRAN=ON
 -------------------------------------------------
 Welcome to PhyDLL <Physics Deep Learning coupLer>
 phydll@cerfacs.fr                      CERFACS(C)
 -------------------------------------------------
 
-(PhyDLL) -----> INSTALL ...
+(PhyDLL)... -----> INSTALLATION INFORMATION --------------------------
+          Build directory: /home/serhani/PHYDLL
+          Sources directory: /home/serhani/phydll/src/core)
 
-          Build directory: /home/serhani/PhyDLL
-          Sources directory: /home/serhani/phydll/src/fortran
+          Enable Fortran API: ON
+          Enable Python API: ON
 
-          CWIPI support: True
-          CWIPI directory: /home/serhani/CWIPI
-
-          HDF5 support: True
+          HDF5 support: True
           HDF5 directory: /home/serhani/HDF5
 
-          Fortran compiler: mpifort (/usr/bin/mpifort)
-          Fortran flags: -O2 -g -cpp -Wall -Wextra -fbacktrace -ffree-line-length-none -DCWIPI -I/home/serhani/CWIPI/include -L/home/serhani/CWIPI/lib -Wl,-rpath=/home/serhani/CWIPI/lib -lcwp -lcwpf -DHDF5 -I/home/serhani/HDF5/include -L/home/serhani/HDF5/lib -lhdf5_fortran -lhdf5 -lhdf5_hl -lhdf5hl_fortran
+          C compiler: mpicc (/opt/openmpi/4.1.1/bin/mpicc)
+          Fortran compiler: mpifort (/opt/openmpi/4.1.1/bin/mpifort)
 
-          Compiling ...
-mpifort -O2 -g -cpp -Wall -Wextra -fbacktrace -ffree-line-length-none -DCWIPI -I/home/serhani/CWIPI/include -L/home/serhani/CWIPI/lib -Wl,-rpath=/home/serhani/CWIPI/lib -lcwp -lcwpf -DHDF5 -I/home/serhani/HDF5/include -L/home/serhani/HDF5/lib -lhdf5_fortran -lhdf5 -lhdf5_hl -lhdf5hl_fortran -fpic -shared ./src/fortran/mod_params.f90 ./src/fortran/mod_env.f90 ./src/fortran/mod_cpl.f90 ./src/fortran/mod_mesh.f90 ./src/fortran/mod_io.f90 ./src/fortran/mod_phydll.f90 ./src/fortran/phydll.f90 -o ../PHYDLL/lib/libphydll.so -I../PHYDLL/include
+          Python interpreter: Python 3.9.7 (/home/serhani/pyenvs/py39-mpi4py-cython/bin/python)
 
-          PhyDLL Library path: /home/serhani/PhyDLL/lib
-          PhyDLL Include path: /home/serhani/PhyDLL/include
+          PhyDLL's Library path: /home/serhani/PHYDLL/lib
+          PhyDLL's Include path: /home/serhani/PHYDLL/include
+          PhyDLL's Python package: /home/serhani/PHYDLL/src/python/pyphydll
+------------------------------------------------------------ ...done
 
-(PhyDLL) -----> DONE
+(PhyDLL)... -----> C COMPILING ---------------------------------------
+mkdir -p /home/serhani/PHYDLL/lib /home/serhani/PHYDLL/include
+mpicc -g -O2 -Wall -Wextra -std=c99 -DHDF5 -I/home/serhani/HDF5/include -L/home/serhani/HDF5/lib -lhdf5 -lhdf5_hl -fPIC -shared -I/home/serhani/phydll/src/core /home/serhani/phydll/src/core/phydll.c /home/serhani/phydll/src/core/kernel.c /home/serhani/phydll/src/core/kernel_structs.c /home/serhani/phydll/src/core/io.c /home/serhani/phydll/src/core/utils.c -o /home/serhani/PHYDLL/lib/libphydll.so
+cp /home/serhani/phydll/src/core/phydll.h /home/serhani/PHYDLL/include
+------------------------------------------------------------ ...done
 
-$ export PHYDLL_DIR=/home/serhani/PhyDLL
+(PhyDLL)... -----> Fortran COMPILING ---------------------------------
++ mpifort -g -O2 -cpp -Wall -Wextra -ffree-line-length-none -I/home/serhani/HDF5/include -L/home/serhani/HDF5/lib -lhdf5 -lhdf5_hl -lhdf5_fortran -lhdf5hl_fortran -fPIC -shared /home/serhani/phydll/src/fortran/phydll_cf.f90 /home/serhani/phydll/src/fortran/phydll_f.f90 -o /home/serhani/PHYDLL/lib/libphydll_f.so -L/home/serhani/PHYDLL/lib -lphydll -Wl,-rpath=/home/serhani/PHYDLL/lib
++ mv phydll_cf.mod phydll_f.mod /home/serhani/PHYDLL/include
++ set +x
+------------------------------------------------------------ ...done
 
-$ pip install -U -e .
+(PhyDLL)... -----> Python SETUP --------------------------------------
++ cd /home/serhani/phydll/src/python/pyphydll
++ PHYDLL_CYTHON_SOURCES=/home/serhani/phydll/src/python/pyphydll/cyphydll.pyx
++ PHYDLL_INCLUDE_DIR=/home/serhani/phydll/src/core
++ PHYDLL_LIBRARIES_DIR=/home/serhani/PHYDLL/lib
++ python /home/serhani/phydll/src/python/pyphydll/setup.py build_ext --build-temp=/home/serhani/phydll/src/python/pyphydll --build-lib=/home/serhani/phydll/src/python/pyphydll
+Compiling /home/serhani/phydll/src/python/pyphydll/cyphydll.pyx because it changed.
+[1/1] Cythonizing /home/serhani/phydll/src/python/pyphydll/cyphydll.pyx
+running build_ext
+building 'cyphydll' extension
+mpicc -Wno-unused-result -Wsign-compare -DNDEBUG -O2 -Wall -fPIC -O2 -isystem <...>
+In file included <...>
+gcc -pthread -B <...>
++ cp /scratch/coop/serhani/AVBP-DL/PhyDLL/setup.cfg /scratch/coop/serhani/AVBP-DL/PhyDLL/setup.py /scratch/coop/serhani/AVBP-DL/PhyDLL/build
++ rm -rf /home/serhani/PHYDLL/src/python
++ mkdir -p /home/serhani/PHYDLL/src/python
++ cp -r /home/serhani/phydll/src/python/pyphydll /home/serhani/PHYDLL/src/python/
++ cd /scratch/coop/serhani/AVBP-DL/PhyDLL/build
++ pip install .
+Processing /scratch/coop/serhani/AVBP-DL/PhyDLL/build
+  Preparing metadata (setup.py) ... done
+Requirement already satisfied: mpi4py in <...> (from pyphydll==0.2.0) (3.0.3)
+Requirement already satisfied: numpy in <...> (from pyphydll==0.2.0) (1.19.5)
+Requirement already satisfied: pyyaml in <...> (from pyphydll==0.2.0) (6.0)
+Building wheels for collected packages: pyphydll
+  Building wheel for pyphydll (setup.py) ... done
+  Created wheel for pyphydll: <...>
+  Stored in directory: <...>
+Successfully built pyphydll
+Installing collected packages: pyphydll
+  Attempting uninstall: pyphydll
+    Found existing installation: pyphydll 0.2.0
+    Uninstalling pyphydll-0.2.0:
+      Successfully uninstalled pyphydll-0.2.0
+Successfully installed pyphydll-0.2.0
+
+[notice] A new release of pip is available: 23.0.1 -> 23.3.1
+[notice] To update, run: pip install --upgrade pip
++ set +x
+------------------------------------------------------------ ...done
+
+$ make CC=mpicc FC=mpifort ENABLE_PYTHON=ON ENABLE_FORTRAN=ON install
+(PhyDLL)... -----> C/C TESTS -----------------------------------------
+	Compiling/linking C test physical solver...
+		Succeeded
+	...done
+
+	Compiling/linking C test DL engine...
+		Succeeded
+ 	...done
+
+	Running...
+		Succeeded
+ 	...done
+------------------------------------------------------------ ...done
+
+(PhyDLL)... -----> Fortran/C TESTS -----------------------------------
+	Compiling/linking Fortran test physical solver...
+		Succeeded
+	...done
+
+	Running...
+		Succeeded
+ 	...done
+------------------------------------------------------------ ...done
+
+(PhyDLL)... -----> Python/Python TESTS --------------
+	Running Python/Python coupling...
+		Succeeded
+ 	...done
+------------------------------------------------------------ ...done
 ```

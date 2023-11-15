@@ -46,7 +46,7 @@ python jobscript_generator.py \
 --xcmd "source ./myenv/bin/activate" \
 --phytn 32 --dltn 4  \
 --runmode srun \
---phyexec "./FortranSolver.exe" --dlexec "python DLengine.py" \
+--phyexec "./PhysicalSolver.exe" --dlexec "DLengine.exe" \
 ```
 
 - It generates the following file
@@ -84,7 +84,7 @@ export ENABLE_PHYDLL=TRUE
 #########################
 
 # PLACEMENT FILE ########
-python ./placement4mpmd.py --Run srun --NpPHY $NP_PHY --NpDL $NP_DL --PHYEXE './FortranSolver.exe' --DLEXE 'python DLengine.py'
+python ./placement4mpmd.py --Run srun --NpPHY $NP_PHY --NpDL $NP_DL --PHYEXE './PhysicalSolver.exe' --DLEXE 'DLengine.exe'
 #########################
 
 # MPMD EXECUTION ########
