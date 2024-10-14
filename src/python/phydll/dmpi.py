@@ -240,7 +240,8 @@ class dMPI:
             if self.dl_nfields == 1:
                 self.dl_fields = array.reshape((1, -1))
             else:
-                self.dl_fields[i::self.dl_nfields] = array[i, :]
+                for i in range(self.dl_nfields):
+                    self.dl_fields[i::self.dl_nfields] = array[i, :]
 
 
     def send(self, dl_fields, index=-1):
