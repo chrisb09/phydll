@@ -13,7 +13,7 @@ program phy_main
 
     character(kind=c_char, len=16) :: instance
     integer(c_int) :: count = 3
-    integer(c_int) :: size = 5
+    integer(c_int) :: size = 500
 
     double precision, dimension(:), pointer :: phy_field_0, phy_field_1, phy_field_2
     character(kind=c_char, len=64) :: phy_label_0, phy_label_1, phy_label_2
@@ -22,7 +22,7 @@ program phy_main
     character(kind=c_char, len=64) :: dl_label_0, dl_label_1
 
     integer :: iter
-    integer :: niter = 5
+    integer :: niter = 100
 
     integer :: i
 
@@ -43,6 +43,14 @@ program phy_main
     allocate(phy_field_0(size))
     allocate(phy_field_1(size))
     allocate(phy_field_2(size))
+
+    allocate(dl_field_0(size))
+    allocate(dl_field_1(size))
+
+    do i = 1, size
+        dl_field_0(i) = -999d0
+        dl_field_1(i) = -999d0
+    end do
 
     do iter = 1, niter
         do i = 1, size
@@ -68,15 +76,13 @@ program phy_main
         call phydll_irecv_f()
         call phydll_wait_irecv_f()
 
-        allocate(dl_field_0(size))
-        allocate(dl_field_1(size))
-
         call phydll_get_field_f(dl_field_0, dl_label_0)
         call phydll_get_field_f(dl_field_1, dl_label_1)
 
-        ! deallocate(dl_field_0)
-        ! deallocate(dl_field_1)
     end do
+
+    deallocate(dl_field_0)
+    deallocate(dl_field_1)
 
     deallocate(phy_field_0)
     deallocate(phy_field_1)
