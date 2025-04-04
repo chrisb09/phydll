@@ -5,7 +5,7 @@
 
 #include "phydll.h"
 
-#define DEBUG 0
+#define DEBUG 1
 
 int main(int argc, char* argv[]) {
     // Init MPI

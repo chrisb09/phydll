@@ -47,7 +47,7 @@ make install
 ## Fortran interface
 To enable the creation of the Fortran interface, we add the option `ENABLE_FORTAN=ON` to the Make and set the MPI-Fortran compiler
 ```bash
-export BUILD_DIRECTORY=<build directory>
+export BUILD=<build directory>
 export CC=<MPI-C compiler>
 
 export FC=<MPI-Fortran compiler>
@@ -62,7 +62,7 @@ It generates the library and module files: `$BUILD/lib/phydll_f.so` and `$BUILD/
 
 Note that `mpi4py` should be installed by using the same MPI compiler.
 ```bash
-export BUILD_DIRECTORY=<build directory>
+export BUILD=<build directory>
 export CC=<MPI-C compiler>
 
 make CC=$CC BUILD=$BUILD ENABLE_PYTHON=ON

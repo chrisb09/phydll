@@ -1,8 +1,9 @@
+SHELL := /bin/bash
 CC := $(CC)
 CFLAGS := -g -O2 -Wall -Wextra -std=c99
 
 FC := $(FC)
-FFLAGS := -g -O2 -cpp -Wall -Wextra -ffree-line-length-none
+FFLAGS := -g -O2 -cpp -Wall -Wextra -ffree-line-length-none -fcheck=all
 ifeq ("$(FC)", "mpiifort")
 FFLAGS := -g -O2 -fpp -warn all -traceback
 endif
@@ -97,12 +98,12 @@ pysetup: $(LIB)/libphydll.so $(PYDIR)/cyphydll.pyx
 	@if [[ $(ENABLE_PYTHON) == "ON" ]]; then \
 		echo -e "(PhyDLL)... -----> Python SETUP --------------------------------------\n"; \
 		set -x; \
-		cd $(PYDIR) && PHYDLL_CYTHON_SOURCES=$(PYDIR)/cyphydll.pyx PHYDLL_INCLUDE_DIR=$(SRCDIR) PHYDLL_LIBRARIES_DIR=$(LIB) python $(PYDIR)/setup.py build_ext --build-temp=$(PYDIR) --build-lib=$(PYDIR); \
+		cd $(PYDIR) && PHYDLL_CYTHON_SOURCES=$(PYDIR)/cyphydll.pyx PHYDLL_INCLUDE_DIR=$(SRCDIR) PHYDLL_LIBRARIES_DIR=$(LIB) python $(PYDIR)/setup.py build_ext --build-temp=$(PYDIR) --build-lib=$(PYDIR) || exit 1; \
 		cp $(realpath ./setup.cfg) $(realpath ./setup.py) $(BUILD_DIR); \
 		rm -rf $(BUILD_DIR)/src/python; \
 		mkdir -p $(BUILD_DIR)/src/python; \
 		cp -r $(realpath ./src/python/pyphydll) $(BUILD_DIR)/src/python/; \
-		cd $(BUILD_DIR) && pip install .; \
+		cd $(BUILD_DIR) && pip install -e .; \
 		set +x; \
 		echo -e "\n------------------------------------------------------------ ...done\n\n"; \
 	fi \
@@ -124,7 +125,7 @@ crun: $(TESTDIR)/phy_main.c $(TESTDIR)/dl_main.c $(LIB)/libphydll.so
 		$(CC) $(CFLAGS) $(TESTDIR)/phy_main.c -o $(TESTDIR)/phy.exe -I$(INC) -L$(LIB) -lphydll -Wl,-rpath=$(LIB); \
 		$(CC) $(CFLAGS) $(TESTDIR)/dl_main.c -o $(TESTDIR)/dl.exe -I$(INC) -L$(LIB) -lphydll -Wl,-rpath=$(LIB); \
 		cd $(TESTDIR); \
-		mpirun -n 7 $(TESTDIR)/phy.exe : -n 2 $(TESTDIR)/dl.exe; \
+		mpirun --use-hwthread-cpus -n 16 $(TESTDIR)/phy.exe : -n 8 $(TESTDIR)/dl.exe; \
 		set +x; \
 	elif [[ $(TEST_VERBOSE) == "OFF" ]]; then \
 		cd $(TESTDIR); \
@@ -145,7 +146,7 @@ crun: $(TESTDIR)/phy_main.c $(TESTDIR)/dl_main.c $(LIB)/libphydll.so
 			exit 1; \
     	fi; \
 		echo -e "\tRunning..."; \
-		mpirun -n 7 $(TESTDIR)/phy.exe : -n 2 $(TESTDIR)/dl.exe &> /dev/null; \
+		mpirun --use-hwthread-cpus -n 16 $(TESTDIR)/phy.exe : -n 8 $(TESTDIR)/dl.exe &> /dev/null; \
 		if [[ $$? -eq 0 ]]; then \
         	echo -e "\t\tSucceeded\n \t...done"; \
     	else \

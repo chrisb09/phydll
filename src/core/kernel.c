@@ -255,8 +255,6 @@ void kernel_set_field(env_t* env, cpl_t* cpl, double** field, char label[]) {
 void kernel_get_field(env_t* env, cpl_t* cpl, double** field, char label[]) {
     char msg[LL_CHAR];
 
-    *field = (double*) malloc(cpl->size * sizeof(double));
-
     if (env->is_phy_instance) {
         for (int i = 0; i < cpl->size; i++) {
             (*field)[i] = cpl->dl_field[cpl->dl_ic].array[i];
@@ -408,6 +406,9 @@ void kernel_wait_isend(env_t* env, cpl_t* cpl, msh_t* msh) {
     MPI_Waitall(env->s_nops, env->s_requests, &status[0]);
     MPI_Waitall(env->s_nops, env->s_l_requests, &lstatus[0]);
 
+    free(env->s_requests);
+    free(env->s_l_requests);
+
     char msg[LL_CHAR];
     if (env->is_phy_instance) sprintf(msg, "(PhyDLL:PHY) ----> SEND...>>>... Physical fields ...done\n");
     else if (env->is_dl_instance) sprintf(msg, "(PhyDLL:DL) ----> SEND...>>>... DL fields ...done\n");
@@ -491,6 +492,9 @@ void kernel_wait_irecv(env_t* env, cpl_t* cpl, msh_t* msh) {
 
     MPI_Waitall(env->r_nops, env->r_requests, &status[0]);
     MPI_Waitall(env->r_nops, env->r_l_requests, &lstatus[0]);
+
+    free(env->r_requests);
+    free(env->r_l_requests);
 
     // @hc
     if (env->is_dl_instance && cpl->is_with_phy_mesh) {
