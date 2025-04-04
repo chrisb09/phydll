@@ -22,12 +22,17 @@ int main(int argc, char* argv[]) {
     int count = 2;
     phydll_define_dl(count);
 
+    // Get physical field
+    int size;
+    phydll_get_field_size(&size);
+
     // Allocate fields
-    double* phy_field_0;
-    double* phy_field_1;
-    double* phy_field_2;
-    double* dl_field_0;
-    double* dl_field_1;
+    double* phy_field_0 = (double*) malloc(size * sizeof(double));
+    double* phy_field_1 = (double*) malloc(size * sizeof(double));
+    double* phy_field_2 = (double*) malloc(size * sizeof(double));
+
+    double* dl_field_0 = (double*) malloc(size * sizeof(double));
+    double* dl_field_1 = (double*) malloc(size * sizeof(double));
 
     // Temporal loop
     // int niter = 5;
@@ -36,10 +41,6 @@ int main(int argc, char* argv[]) {
         // Receive physical field
         phydll_irecv();
         phydll_wait_irecv();
-
-        // Get physical field
-        int size;
-        phydll_get_field_size(&size);
 
         char label_0[64], label_1[64], label_2[64];
         phydll_get_field(&phy_field_0, label_0);
@@ -59,8 +60,6 @@ int main(int argc, char* argv[]) {
         } if (DEBUG) printf("%s] \t {%s:%d}\n\n", msg, __func__, __LINE__);
 
         // Compute DL field
-        dl_field_0 = (double*) malloc(size * sizeof(double));
-        dl_field_1 = (double*) malloc(size * sizeof(double));
         for (int i = 0; i < size; i++) {
             dl_field_0[i] = -(50 + phy_field_0[i] + phy_field_2[i]);
             dl_field_1[i] = -(80 + phy_field_1[i] + phy_field_2[i]);

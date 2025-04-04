@@ -14,6 +14,24 @@ import numpy as np
 cimport numpy as np
 from libcpp cimport bool as cbool
 from mpi4py.MPI cimport Comm
+
+# Workaround for mpi4py>=4.0.0 trying to use MPI 4 
+# features while the actual MPI loaded might not support it
+cdef extern from *:
+    """
+    #include <mpi.h>
+    
+    #if (MPI_VERSION < 3) && !defined(PyMPI_HAVE_MPI_Message)
+    typedef void *PyMPI_MPI_Message;
+    #define MPI_Message PyMPI_MPI_Message
+    #endif
+    
+    #if (MPI_VERSION < 4) && !defined(PyMPI_HAVE_MPI_Session)
+    typedef void *PyMPI_MPI_Session;
+    #define MPI_Session PyMPI_MPI_Session
+    #endif"
+    """
+
 from mpi4py.libmpi cimport MPI_Comm
 
 
@@ -222,12 +240,12 @@ def pyphydll_get_field_counts() -> (int, int):
 @return str Label of the field
 """
 def pyphydll_get_field() -> (np.ndarray[np.double], str):
-    cdef double* field
     cdef char label[ML_CHAR]
     size = pyphydll_get_field_size()
     cdef np.ndarray[np.double_t, ndim=1] pyfield = np.zeros(size, dtype=np.double)
-    phydll_get_field(&field, label)
-    pyfield[:] = <np.double_t[:size]> field
+    cdef double *cfield = <double*> np.PyArray_DATA(pyfield)
+    phydll_get_field(&cfield, label)
+    pyfield[:] = <np.double_t[:size]> cfield
     return pyfield, str(label, encoding='utf-8')
 #
 

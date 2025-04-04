@@ -234,6 +234,7 @@ module phydll_f
 
         write(label_c, "(a,a)") trim(label), C_NULL_CHAR
 
+        field_c = c_loc(field)
         call phydll_get_field_cf(field_c, label)
         call c_f_pointer(field_c, field, [size__])
     end subroutine
