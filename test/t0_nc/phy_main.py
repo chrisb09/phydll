@@ -8,7 +8,7 @@ from time import sleep
 def main():
     size = 7
     count = 2
-    niter = 5
+    niter = 10
 
     phyl = PhyDLL()
 
@@ -30,7 +30,7 @@ def main():
 
         phyl.send(phy_fields)
 
-        sleep(2)
+        sleep(0.1)
 
         dl_fields = phyl.recv()
 

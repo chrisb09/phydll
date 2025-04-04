@@ -19,7 +19,7 @@ int main(int argc, char* argv[]) {
     int _s; MPI_Comm_size(comm, &_s);
 
     // Define phydll
-    int count = 2;
+    int count = 4;
     phydll_define_dl(count);
 
     // Get physical field

@@ -3,14 +3,9 @@ build*
 
 src/fortran/*.mod
 
-src/python/pyphydll/*.c
-src/python/pyphydll/*.so
-src/python/pyphydll/build
-src/python/pyphydll/python/
-src/python/pyphydll/__pycache__
-src/python/phydll/__pycache__
-src/python/phydll/.vscode
-src/python/pyphydll.egg-info/
+src/python/pyphydll/
+!./src/python/pyphydll/*.py
+!./src/python/pyphydll/*.pyx
 
 test/r1
 test/utsim/meshes
@@ -26,10 +21,9 @@ test/utsim/run/*
 !test/utsim/run/phydll.yml
 
 test/t0_nc/*
-!test/t0_nc/dl_main.c
-!test/t0_nc/phy_main.c
-!test/t0_nc/phy_main.f90
-!test/t0_nc/phy_main.py
-!test/t0_nc/dl_main.py
+!test/t0_nc/*.c
+!test/t0_nc/*.f90
+!test/t0_nc/*.py
+!test/t0_nc/*.sh
 
 **/.vscode

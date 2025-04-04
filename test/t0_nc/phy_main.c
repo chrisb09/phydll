@@ -24,11 +24,11 @@ int main(int argc, char* argv[]) {
     phydll_opt_set_output_freq(2);
 
     // Loop params
-    int niter = 5;
+    int niter = 10;
 
     // Define phydll
-    int count = 3;
-    int size = 5 + hc_rank;
+    int count = 7;
+    int size = 500 + hc_rank;
     phydll_define_phy(count, size);
 
     // Allocate fields
