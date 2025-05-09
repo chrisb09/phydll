@@ -10,7 +10,7 @@
 """
 import numpy as np
 from typing import Tuple
-from pyphydll.cyphydll import pyphydll_init, pyphydll_finalize, pyphydll_define_phy, pyphydll_define_dl, \
+from pyphydll.cyphydll import pyphydll_get_distribution_info, pyphydll_init, pyphydll_finalize, pyphydll_define_phy, pyphydll_define_dl, \
     pyphydll_define_phy_with_mesh, pyphydll_recv, pyphydll_irecv, pyphydll_wait_irecv, pyphydll_send, \
     pyphydll_isend, pyphydll_wait_isend, pyphydll_get_field, pyphydll_set_field, pyphydll_get_field_size, \
     pyphydll_get_field_counts, pyphydll_is_phy_signal, pyphydll_is_phy_instance, pyphydll_is_dl_instance, \
@@ -337,6 +337,11 @@ class PhyDLL:
             dl_count    (int) DL fields count
         """
         return self.phy_count, self.dl_count
+
+
+    @staticmethod
+    def get_distribution_info() -> dict:
+        return pyphydll_get_distribution_info()
 
 
     @staticmethod

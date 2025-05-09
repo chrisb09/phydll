@@ -56,6 +56,10 @@ cdef extern from "phydll.h":
     void phydll_get_field_counts(int* phy_count, int* dl_count)
     void phydll_set_field(double** field, char label[])
     MPI_Comm phydll_get_local_mpi_comm()
+    int phydll_get_dist_rank()
+    int phydll_get_dist_size()
+    int* phydll_get_dest()
+    int phydll_get_ndest()
 
     # Boolean status
     cbool phydll_is_phy_signal()
@@ -242,6 +246,28 @@ def pyphydll_set_field(field: np.ndarray[np.double], label: str) -> None:
     phydll_set_field(&cfield, label.encode('utf-8'))
 #
 
+
+def pyphydll_get_distribution_info() -> dict:
+    cdef int i, ndest
+    cdef int* dest_ptr
+
+    dist_rank = phydll_get_dist_rank()
+    dist_size = phydll_get_dist_size()
+    dest_ptr = phydll_get_dest()
+    ndest = phydll_get_ndest()
+
+    if dest_ptr == NULL or ndest == 0:
+        dest_list = []
+    else:
+        dest_list = [dest_ptr[i] for i in range(ndest)]
+
+    return {
+        "dist_rank": dist_rank,
+        "dist_size": dist_size,
+        "ndest": ndest,
+        "dest": dest_list
+    }
+#
 
 """
 @brief Physical signal to send data

@@ -40,6 +40,11 @@ void phydll_get_field_counts(int* phy_count, int* dl_count);
 int phydll_get_phy_ite();
 int phydll_get_ite();
 
+int phydll_get_dist_rank();
+int phydll_get_dist_size();
+int* phydll_get_dest();
+int phydll_get_ndest();
+
 
 // Communications
 void phydll_send();

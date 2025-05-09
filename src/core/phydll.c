@@ -216,6 +216,20 @@ void phydll_get_field_counts(int* phy_count, int* dl_count) {
 }
 
 
+int phydll_get_dist_rank() {
+    return env.dist_rank;
+}
+int phydll_get_dist_size() {
+    return env.dist_size;
+}
+int* phydll_get_dest() {
+    return env.dest;
+}
+int phydll_get_ndest() {
+    return env.ndest;
+}
+
+
 /******************************************************************************
  * \brief Check if Physical solver is sending data
  * \return Boolean signal
