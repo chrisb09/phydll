@@ -341,6 +341,15 @@ class PhyDLL:
 
     @staticmethod
     def get_distribution_info() -> dict:
+        """
+        Get communication distribution info as dictionary
+
+        Returns:
+            distribution info  (dict) Information about communication distribution as dict
+
+        Notes:
+            distribution info is like = {"dist_rank": int, "dist_size": int, "ndest": int, "dest": list(int)}
+        """
         return pyphydll_get_distribution_info()
 
 

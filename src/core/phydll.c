@@ -216,15 +216,37 @@ void phydll_get_field_counts(int* phy_count, int* dl_count) {
 }
 
 
+/******************************************************************************
+ * \brief Get DL host (master) rank
+ * \return Integer 
+******************************************************************************/
 int phydll_get_dist_rank() {
     return env.dist_rank;
 }
+
+
+/******************************************************************************
+ * \brief Get Distant size (Size of DL comm)
+ * \return Integer
+******************************************************************************/
 int phydll_get_dist_size() {
     return env.dist_size;
 }
+
+
+/******************************************************************************
+ * \brief Get list of DL process ranks this Phy process sends to 
+ * \return List of Integers
+******************************************************************************/
 int* phydll_get_dest() {
     return env.dest;
 }
+
+
+/******************************************************************************
+ * \brief Get number of DL processes this Phy process sends to
+ * \return Integer
+******************************************************************************/
 int phydll_get_ndest() {
     return env.ndest;
 }

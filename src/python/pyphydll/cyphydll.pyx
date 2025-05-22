@@ -247,6 +247,10 @@ def pyphydll_set_field(field: np.ndarray[np.double], label: str) -> None:
 #
 
 
+"""
+@brief Get information about distribution of communication targets
+@return Dictionary containing distribution (communication) info
+"""
 def pyphydll_get_distribution_info() -> dict:
     cdef int i, ndest
     cdef int* dest_ptr
