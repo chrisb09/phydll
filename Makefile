@@ -97,7 +97,8 @@ pysetup: $(LIB)/libphydll.so $(PYDIR)/cyphydll.pyx
 	@if [[ $(ENABLE_PYTHON) == "ON" ]]; then \
 		echo -e "(PhyDLL)... -----> Python SETUP --------------------------------------\n"; \
 		set -x; \
-		cd $(PYDIR) && PHYDLL_CYTHON_SOURCES=$(PYDIR)/cyphydll.pyx PHYDLL_INCLUDE_DIR=$(SRCDIR) PHYDLL_LIBRARIES_DIR=$(LIB) python $(PYDIR)/setup.py build_ext --build-temp=$(PYDIR) --build-lib=$(PYDIR); \
+		mkdir -p $(BUILD_DIR)/python-build; \
+		cd $(PYDIR) && PHYDLL_CYTHON_SOURCES=$(PYDIR)/cyphydll.pyx PHYDLL_INCLUDE_DIR=$(SRCDIR) PHYDLL_LIBRARIES_DIR=$(LIB) python $(PYDIR)/setup.py build_ext --build-temp=$(BUILD_DIR)/python-build --build-lib=$(PYDIR); \
 		cp $(realpath ./setup.cfg) $(realpath ./setup.py) $(BUILD_DIR); \
 		rm -rf $(BUILD_DIR)/src/python; \
 		mkdir -p $(BUILD_DIR)/src/python; \
