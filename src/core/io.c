@@ -111,10 +111,16 @@ void io_log_mesh_info(env_t* env, msh_t* msh, io_t* io) {
  * \param env_t* PhyDLL's environment struct
  * \param char Message to write
 ******************************************************************************/
+static bool io_log_barriers_enabled(void) {
+    const char* value = getenv("PHYDLL_IO_LOG_BARRIERS");
+    return value == NULL || strcmp(value, "0") != 0;
+}
+
 void io_log(env_t* env, char msg[]) {
-    MPI_Barrier(env->comm);
+    const bool synchronize = io_log_barriers_enabled();
+    if (synchronize) MPI_Barrier(env->comm);
     if (env->comm_rank == env->comm_hrank) printf("%s", msg);
-    MPI_Barrier(env->comm);
+    if (synchronize) MPI_Barrier(env->comm);
 }
 
 
@@ -124,9 +130,10 @@ void io_log(env_t* env, char msg[]) {
  * \param char Message to write
 ******************************************************************************/
 void io_logall(env_t* env, char msg[]) {
-    MPI_Barrier(env->comm);
+    const bool synchronize = io_log_barriers_enabled();
+    if (synchronize) MPI_Barrier(env->comm);
     printf("%s", msg);
-    MPI_Barrier(env->comm);
+    if (synchronize) MPI_Barrier(env->comm);
 }
 
 

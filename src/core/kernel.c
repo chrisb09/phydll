@@ -69,6 +69,9 @@ void kernel_init(env_t* env, cpl_t* cpl, char instance[]) {
     MPI_Comm_split(env->glcomm, color, env->glcomm_rank, &env->comm);
     MPI_Comm_size(env->comm, &env->comm_size);
     MPI_Comm_rank(env->comm, &env->comm_rank);
+    fprintf(stderr, "[PHYDLL:CORE] kernel_init split instance=%s gl_rank=%d gl_size=%d color=%d comm_rank=%d comm_size=%d\n",
+            env->instance, env->glcomm_rank, env->glcomm_size, color, env->comm_rank, env->comm_size);
+    fflush(stderr);
 
     // Host/distant ranks (physical solver)
     if (env->is_phy_instance) {
@@ -146,6 +149,9 @@ void kernel_ds_mapping(env_t* env) {
         }
 
         int dest_tasks_per_rank_list[env->comm_size];
+        fprintf(stderr, "[PHYDLL:CORE] kernel_ds_mapping DL before allgather gl_rank=%d comm_rank=%d comm_size=%d ndest=%d\n",
+                env->glcomm_rank, env->comm_rank, env->comm_size, env->ndest);
+        fflush(stderr);
         MPI_Allgather(&env->ndest, 1, MPI_INT, dest_tasks_per_rank_list, 1, MPI_INT, env->comm);
 
         int _sum = 0;
@@ -157,6 +163,9 @@ void kernel_ds_mapping(env_t* env) {
         for (int i = 0; i < env->ndest; i++) {
             env->dest[i] = _sum + i;
         }
+        fprintf(stderr, "[PHYDLL:CORE] kernel_ds_mapping DL complete gl_rank=%d ndest=%d\n",
+                env->glcomm_rank, env->ndest);
+        fflush(stderr);
     }
 }
 
@@ -192,20 +201,24 @@ void kernel_alloc_phy_fields(env_t* env, cpl_t* cpl, int count, int size) {
 void kernel_alloc_dl_fields(env_t* env, cpl_t* cpl, int count) {
     cpl->dl_count = count;
 
+    fprintf(stderr, "[PHYDLL:CORE] kernel_alloc_dl_fields before mesh broadcast gl_rank=%d\n", env->glcomm_rank);
+    fflush(stderr);
     _kernel_bcast_is_with_phy_mesh(env, cpl);
+    fprintf(stderr, "[PHYDLL:CORE] kernel_alloc_dl_fields after mesh broadcast gl_rank=%d\n", env->glcomm_rank);
+    fflush(stderr);
     _kernel_bcast_field_size(env, cpl);
+    fprintf(stderr, "[PHYDLL:CORE] kernel_alloc_dl_fields after field-size exchange gl_rank=%d\n", env->glcomm_rank);
+    fflush(stderr);
     _kernel_agg_field_sizes(env, cpl);
     _kernel_alloc_fields(env, cpl);
 
     // @dbg
-    char msg[LL_CHAR], _msg[LL_CHAR];
-    sprintf(msg, "phy_count = %d, dl_count = %d, field_sizes = ", cpl->phy_count, cpl->dl_count);
-    for (int i = 0; i < env->ndest; i++) {
-        sprintf(_msg, "%d, ", cpl->sizes_list[i]);
-        strcat(msg, _msg);
+    char msg[LLL_CHAR * LLL_CHAR];
+    int offset = snprintf(msg, sizeof(msg), "phy_count = %d, dl_count = %d, field_sizes = ", cpl->phy_count, cpl->dl_count);
+    for (int i = 0; i < env->ndest && offset < (int)sizeof(msg) - 32; i++) {
+        offset += snprintf(msg + offset, sizeof(msg) - offset, "%d, ", cpl->sizes_list[i]);
     }
-    sprintf(_msg, " sum_sizes = %d, ndest = %d, is_with_phy_mesh = %d \t {%s:%d}\n\n", cpl->size, env->ndest, cpl->is_with_phy_mesh, __func__, __LINE__);
-    strcat(msg, _msg);
+    snprintf(msg + offset, sizeof(msg) - offset, " sum_sizes = %d, ndest = %d, is_with_phy_mesh = %d \t {%s:%d}\n\n", cpl->size, env->ndest, cpl->is_with_phy_mesh, __func__, __LINE__);
     io_log_dbg(env, msg);
 }
 
@@ -926,9 +939,12 @@ static void _kernel_bcast_is_with_phy_mesh(env_t* env, cpl_t* cpl) {
 ******************************************************************************/
 static void _kernel_agg_field_sizes(env_t* env, cpl_t* cpl) {
     cpl->size = 0;
+    fprintf(stderr, "[PHYDLL:CORE] _kernel_agg_field_sizes ndest=%d gl_rank=%d\n", env->ndest, env->glcomm_rank);
     for (int i = 0; i < env->ndest; i++) {
         cpl->size += cpl->sizes_list[i];
+        fprintf(stderr, "[PHYDLL:CORE]   sizes_list[%d]=%d -> accum=%d\n", i, cpl->sizes_list[i], cpl->size);
     }
+    fflush(stderr);
 }
 
 
@@ -961,6 +977,9 @@ static void _kernel_bcast_mesh_info(env_t* env, msh_t* msh) {
  * \param cpl_t* PhyDLL’s coupling struct
 ******************************************************************************/
 static void _kernel_alloc_fields(env_t* env, cpl_t* cpl) {
+    fprintf(stderr, "[PHYDLL:CORE] _kernel_alloc_fields begin gl_rank=%d phy_bcast_root=%d dl_bcast_root=%d\n",
+            env->glcomm_rank, env->phy_bcast_root, env->dl_bcast_root);
+    fflush(stderr);
     // Broadcast phy_count
     MPI_Bcast(&cpl->phy_count, 1, MPI_INT, env->phy_bcast_root, env->glcomm);
 
@@ -970,24 +989,47 @@ static void _kernel_alloc_fields(env_t* env, cpl_t* cpl) {
     // Broadcast output_frequency
     MPI_Bcast(&cpl->output_freq, 1, MPI_INT, env->phy_bcast_root, env->glcomm);
 
+    fprintf(stderr, "[PHYDLL:CORE] _kernel_alloc_fields bcasts done gl_rank=%d phy_count=%d dl_count=%d size=%d\n",
+            env->glcomm_rank, cpl->phy_count, cpl->dl_count, cpl->size);
+    fflush(stderr);
+
     // Allocate buffers
     cpl->phy_field = (field_t *) malloc(cpl->phy_count * sizeof(field_t));
     cpl->dl_field = (field_t *) malloc(cpl->dl_count * sizeof(field_t));
+    fprintf(stderr, "[PHYDLL:CORE] _kernel_alloc_fields field_t arrays alloc done gl_rank=%d phy_ptr=%p dl_ptr=%p\n",
+            env->glcomm_rank, (void*)cpl->phy_field, (void*)cpl->dl_field);
+    fflush(stderr);
 
     // Initialize buffers for physical fields
     for (int i = 0; i < cpl->phy_count; i++) {
-        cpl->phy_field[i].array = (double*) malloc(cpl->size * sizeof(double));
-        for (int j = 0; j < cpl->size; j++) {
-            cpl->phy_field[i].array[j] = DINIT;
+        size_t alloc_bytes = (size_t)cpl->size * sizeof(double);
+        fprintf(stderr, "[PHYDLL:CORE]   allocating phy_field[%d] size=%d bytes=%zu\n", i, cpl->size, alloc_bytes);
+        fflush(stderr);
+        cpl->phy_field[i].array = (double*) malloc(alloc_bytes);
+        if (!cpl->phy_field[i].array) {
+            fprintf(stderr, "[PHYDLL:CORE] ERROR: malloc failed for phy_field[%d] bytes=%zu\n", i, alloc_bytes);
+            fflush(stderr);
+        } else {
+            for (int j = 0; j < cpl->size; j++) {
+                cpl->phy_field[i].array[j] = DINIT;
+            }
         }
         strcpy(cpl->phy_field[i].label, CINIT);
     }
 
     // Initialize buffers for dl fields
     for (int i = 0; i < cpl->dl_count; i++) {
-        cpl->dl_field[i].array = (double*) malloc(cpl->size * sizeof(double));
-        for (int j = 0; j < cpl->size; j++) {
-            cpl->dl_field[i].array[j] = DINIT;
+        size_t alloc_bytes = (size_t)cpl->size * sizeof(double);
+        fprintf(stderr, "[PHYDLL:CORE]   allocating dl_field[%d] size=%d bytes=%zu\n", i, cpl->size, alloc_bytes);
+        fflush(stderr);
+        cpl->dl_field[i].array = (double*) malloc(alloc_bytes);
+        if (!cpl->dl_field[i].array) {
+            fprintf(stderr, "[PHYDLL:CORE] ERROR: malloc failed for dl_field[%d] bytes=%zu\n", i, alloc_bytes);
+            fflush(stderr);
+        } else {
+            for (int j = 0; j < cpl->size; j++) {
+                cpl->dl_field[i].array[j] = DINIT;
+            }
         }
         strcpy(cpl->dl_field[i].label, CINIT);
     }
@@ -999,6 +1041,8 @@ static void _kernel_alloc_fields(env_t* env, cpl_t* cpl) {
     // Initialize iteration numbers
     cpl->phy_ite = 0;
     cpl->ite = 0;
+    fprintf(stderr, "[PHYDLL:CORE] _kernel_alloc_fields complete gl_rank=%d\n", env->glcomm_rank);
+    fflush(stderr);
 }
 
 

@@ -30,6 +30,9 @@ io_t io;
 void phydll_init(char instance[]) { //@hc , MPI_Comm *glcomm, MPI_Comm *comm) {
     // Kernel initialization
     kernel_init(&env, &cpl, instance);
+    fprintf(stderr, "[PHYDLL:CORE] phydll_init instance=%s kernel_init complete gl_rank=%d gl_size=%d comm_rank=%d comm_size=%d\n",
+            instance, env.glcomm_rank, env.glcomm_size, env.comm_rank, env.comm_size);
+    fflush(stderr);
 
     // Print welcome message in STDOUT
     io_log(&env, "*******************************************************************************\n");
@@ -38,9 +41,13 @@ void phydll_init(char instance[]) { //@hc , MPI_Comm *glcomm, MPI_Comm *comm) {
 
     // Create logfile
     io_create_logfile(&env, &cpl, &io);
+    fprintf(stderr, "[PHYDLL:CORE] phydll_init instance=%s logfile complete\n", instance);
+    fflush(stderr);
 
     // Create processes mapping for DS
     kernel_ds_mapping(&env);
+    fprintf(stderr, "[PHYDLL:CORE] phydll_init instance=%s mapping complete ndest=%d\n", instance, env.ndest);
+    fflush(stderr);
 }
 
 
