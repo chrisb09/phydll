@@ -35,6 +35,7 @@ void phydll_define_dl(int count);
 // Setters & getters
 void phydll_set_field(double** field, char label[]);
 void phydll_get_field(double** field, char label[]);
+void phydll_get_field_view(const double** field, char label[]);
 void phydll_get_field_size(int* size);
 void phydll_get_field_counts(int* phy_count, int* dl_count);
 int phydll_get_phy_ite();

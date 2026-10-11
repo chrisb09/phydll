@@ -310,6 +310,49 @@ void kernel_get_field(env_t* env, cpl_t* cpl, double** field, char label[]) {
 
 
 /******************************************************************************
+ * \brief (Getter) Get a borrowed, non-copying view of a received field
+ *
+ * Unlike kernel_get_field, this does not malloc: the returned pointer aliases
+ * PhyDLL's own receive buffer and stays valid until the next irecv cycle. The
+ * field counter is advanced exactly like the copying getter so the two are
+ * interchangeable in a call sequence. The caller must not free the pointer.
+ *
+ * \param env_t* PhyDLL's environment struct
+ * \param cpl_t* PhyDLL’s coupling struct
+ * \param const double** Borrowed received field (must not be freed)
+ * \param char[] Label
+******************************************************************************/
+void kernel_get_field_view(env_t* env, cpl_t* cpl, const double** field, char label[]) {
+    char msg[LL_CHAR];
+
+    if (env->is_phy_instance) {
+        *field = cpl->dl_field[cpl->dl_ic].array;
+        strcpy(label, cpl->dl_field[cpl->dl_ic].label);
+        sprintf(msg, "(PhyDLL:PHY) ----> GET-VIEW... DL field: (%d) '%s' ...done\n", cpl->dl_ic, label);
+        cpl->dl_ic += 1;
+    }
+    else if (env->is_dl_instance) {
+        if (cpl->is_with_phy_mesh) {
+            *field = cpl->phy_field[cpl->phy_ic].array_trim;
+        }
+        else {
+            *field = cpl->phy_field[cpl->phy_ic].array;
+        }
+        strcpy(label, cpl->phy_field[cpl->phy_ic].label);
+        sprintf(msg, "(PhyDLL:DL) ----> GET-VIEW... Physical field: (%d) '%s' ...done\n", cpl->phy_ic, label);
+        cpl->phy_ic += 1;
+    }
+    else {
+        *field = NULL;
+        label[0] = '\0';
+        return;
+    }
+
+    io_log(env, msg);
+}
+
+
+/******************************************************************************
  * \brief (Getter) Get field size
  * \param cpl_t* PhyDLL’s coupling struct
  * \param msh_t* PhyDLL's mesh struct

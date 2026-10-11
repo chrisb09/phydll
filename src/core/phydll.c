@@ -205,6 +205,20 @@ void phydll_get_field(double** field, char label[]) {
 
 
 /******************************************************************************
+ * \brief Get PhyDLL's received field without copying (borrowed view)
+ *
+ * The returned pointer aliases PhyDLL's receive buffer and remains valid until
+ * the next receive cycle. It must not be freed by the caller.
+ *
+ * \param const double** Borrowed received field
+ * \param char[] Label of field
+******************************************************************************/
+void phydll_get_field_view(const double** field, char label[]) {
+    kernel_get_field_view(&env, &cpl, field, label);
+}
+
+
+/******************************************************************************
  * \brief Get field size
  * \param int* size
 ******************************************************************************/

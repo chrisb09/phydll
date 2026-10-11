@@ -43,6 +43,7 @@ void kernel_agg_phy_mesh(env_t* env, cpl_t* cpl, msh_t* msh);
 // Setter/getter
 void kernel_set_field(env_t* env, cpl_t* cpl, double** field, char label[]);
 void kernel_get_field(env_t* env, cpl_t* cpl, double** field, char label[]);
+void kernel_get_field_view(env_t* env, cpl_t* cpl, const double** field, char label[]);
 void kernel_get_field_size(cpl_t* cpl, msh_t* msh, int* size);
 void kernel_get_field_counts(cpl_t* cpl, int* phy_count, int* dl_count);
 
